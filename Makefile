@@ -1,13 +1,10 @@
-packages = alsa x11 freetype2 xext gl
+packages = sndfile samplerate cairo python-2.7 pycairo
 
-#CXX=g++
-CPPFLAGS = -DLINUX=1 $(shell pkg-config --cflags $(packages)) -g
-LDFLAGS = -ljuce $(shell pkg-config --libs $(packages))
+include common.mk
 
 all: out.png
 
-out.png: main
-	./main
+out.png: create-grainmap.py _grainmap.so
+	$(PY) $<
 
-main: main.cpp
-	g++ $(CPPFLAGS) -o $@ $< $(LDFLAGS)
+$(eval $(call pywrap,grainmap))

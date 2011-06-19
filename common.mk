@@ -1,4 +1,4 @@
-CFLAGS += $(shell pkg-config --cflags $(packages))
+CXXFLAGS += $(shell pkg-config --cflags $(packages))
 LDFLAGS += $(shell pkg-config --libs $(packages))
 
 define pywrap
@@ -29,4 +29,4 @@ root:
 	make -C bin -I.. VPATH=.. -f ../Makefile all
 
 check-syntax:
-	gcc -c -o /dev/null -Ibin $(CFLAGS) $(LDFLAGS) ${CHK_SOURCES}
+	g++ -c -o /dev/null -Ibin $(CXXFLAGS) $(LDFLAGS) ${CHK_SOURCES}

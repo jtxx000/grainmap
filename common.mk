@@ -28,5 +28,10 @@ PY = PYTHONPATH=. python2
 root:
 	make -C bin -I.. VPATH=.. -f ../Makefile all
 
+%.h %.cpp: %.lzz
+	lzz -hl -sl -hd -sd -o . $<
+
 check-syntax:
-	g++ -c -o /dev/null -Ibin $(CXXFLAGS) $(LDFLAGS) ${CHK_SOURCES}
+	cp $(CHK_SOURCES) bin
+	make -s -C bin -I.. VPATH=.. -f ../Makefile $(CHK_SOURCES:.lzz=.cpp)
+	cd bin && g++ -c -o /dev/null $(CXXFLAGS) $(LDFLAGS) $(CHK_SOURCES:.lzz=.cpp)

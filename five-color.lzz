@@ -1,26 +1,31 @@
+#hdr
 #include <list>
 #include <vector>
-#include <stack>
 #include <boost/pool/object_pool.hpp>
 #include <unordered_map>
+
+struct vertex;
+#end
 
 using namespace std;
 using namespace boost;
 
+#src
 #include <stdio.h>
+#include <stack>
+#end
 
 enum vertex_type {s_none, s_4t, s_5t};
 
-struct vertex;
-struct edge;
+typedef std::list<vertex*> vertex_stack;
 
-typedef list<vertex*> vertex_stack;
-
+#src
 struct edge_iterator {
   int i;
   edge* e;
 
-  edge_iterator(vertex* v);
+  edge_iterator(vertex* v) : i(v->degree), e(v->root_edge) {
+  }
 
   edge* operator->() {
     return e;
@@ -28,6 +33,7 @@ struct edge_iterator {
 };
 
 #define foreach_edge(edge, vertex) for (edge_iterator edg(vertex); --edg.i >=0; edg.e = edg.e->next)
+#end
 
 typedef char vertex_color;
 
@@ -62,26 +68,30 @@ struct vertex {
   vertex_stack::iterator stack_pos;
   vertex_color color;
   bool mark;
-  unordered_map<vertex*,edge*> edge_map;
+  std::unordered_map<vertex*,edge*> edge_map;
 
   vertex() : root_edge(0), degree(0), type(s_none), color(0), mark(false) {
   }
 
-  void add_edge(vertex* other, object_pool<edge>& pool) {
+  void add_edge(vertex* other, boost::object_pool<edge>& pool) {
     if (edge_map.find(other) != edge_map.end())
       return;
 
     edge* e = pool.malloc();
-    e->prev = root_edge;
-    e->next = root_edge->next;
-    root_edge->next->prev = e;
-    root_edge->next = e;
-    root_edge = e;
-
+    e->vtx = other;
+    if (root_edge) {
+      e->prev = root_edge;
+      e->next = root_edge->next;
+      root_edge->next->prev = e;
+      root_edge->next = e;
+      root_edge = e;
+    } else root_edge = e->next = e->prev = e;
     edge_map.insert(pair<vertex*,edge*>(other, e));
 
     if (!other->edge_map.empty())
       e->pos = other->edge_map[this];
+
+    degree++;
   }
 
   void remove() {
@@ -223,13 +233,10 @@ struct vertex {
   }
 };
 
-edge_iterator::edge_iterator(vertex* v) : i(v->degree), e(v->root_edge) {
-}
-
 class five_color {
-  object_pool<edge> edge_pool;
-  object_pool<vertex> vertex_pool;
-  vector<vertex*> vertices;
+  boost::object_pool<edge> edge_pool;
+  boost::object_pool<vertex> vertex_pool;
+  std::vector<vertex*> vertices;
 
 public:
   vertex* create_vertex() {
@@ -238,7 +245,11 @@ public:
     return v;
   }
 
-  void color(vector<vertex*>& vertices) {
+  void add_edge(vertex* from, vertex* to) {
+    from->add_edge(to, edge_pool);
+  }
+
+  void color() {
     vertex_stack s4, s5;
     stack<pair<vertex*, vertex*> > sd;
 
@@ -298,67 +309,7 @@ public:
   }
 };
 
-// extern "C" {
-//   struct five_color {
-//     struct fc_vertex {
-//       edge* edges;
-//       int numEdges;
-//       vertex vtx;
-//     }* vertices;
-//     int numVertices;
-//   };
-
-//   five_color* newFiveColor(int numVertices) {
-//     five_color* fc = new five_color();
-//     fc->vertices = new five_color::fc_vertex[numVertices];
-//     fc->numVertices = numVertices;
-//     return fc;
-//   }
-
-//   void deletefive_color(five_color* c) {
-//     for (int i=0; i<c->numVertices; i++)
-//       delete c->vertices[i].edges;
-//     delete c->vertices;
-//     delete c;
-//   }
-
-//   five_color::fc_vertex* initVertex(five_color* c, int vertex, int size) {
-//     five_color::fc_vertex* v = c->vertices + vertex;
-//     printf("init %p %d\n", &v->vtx, size);
-//     v->edges = new edge[size];
-//     v->numEdges = size;
-//     v->vtx.degree = size;
-//     for (int i=0; i<v->numEdges; i++) {
-//       v->edges[i].next = v->edges + (i+1)%v->numEdges;
-//       v->edges[i].prev = v->edges + (i-1+v->numEdges)%v->numEdges;
-//     }
-//     if (size)
-//       v->vtx.root_edge = v->edges;
-//     return v;
-//   }
-
-//   void setEdge(five_color* c, five_color::fc_vertex* fromVertex, int fromEdge, int toVertex, int toEdge) {
-//     edge* e = fromVertex->edges + fromEdge;
-//     five_color::fc_vertex* v = c->vertices + toVertex;
-//     e->vtx = &v->vtx;
-//     printf("set edge %p:%d -> %d/%p:%d\n", &fromVertex->vtx, fromEdge, toVertex, e->vtx, toEdge);
-//     e->pos = v->edges + toEdge;
-//   }
-
-//   int vertexColor(five_color::fc_vertex* v) {
-//     return v->vtx.color;
-//   }
-
-//   void run_five_color(five_color* c) {
-//     vector<vertex*> vs;
-//     vs.reserve(c->numVertices);
-//     for (int i=0; i<c->numVertices; i++)
-//       vs.push_back(&c->vertices[i].vtx);
-//     five_color_vertices(vs);
-//   }
-// }
-
-
+#src
 #define BOOST_TEST_DYN_LINK
 #define BOOST_TEST_MAIN
 #include <boost/test/unit_test.hpp>
@@ -391,3 +342,4 @@ BOOST_AUTO_TEST_CASE(distinct) {
   checkMarks(&v);
 }
 
+#end

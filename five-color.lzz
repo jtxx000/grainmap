@@ -77,7 +77,7 @@ struct vertex {
     if (edge_map.find(other) != edge_map.end())
       return;
 
-    edge* e = pool.malloc();
+    edge* e = pool.construct();
     e->vtx = other;
     if (root_edge) {
       e->prev = root_edge;
@@ -88,8 +88,11 @@ struct vertex {
     } else root_edge = e->next = e->prev = e;
     edge_map.insert(pair<vertex*,edge*>(other, e));
 
-    if (!other->edge_map.empty())
+    if (!other->edge_map.empty()) {
       e->pos = other->edge_map[this];
+      e->pos->pos = e;
+    }
+
 
     degree++;
   }
@@ -240,7 +243,7 @@ class five_color {
 
 public:
   vertex* create_vertex() {
-    vertex* v = vertex_pool.malloc();
+    vertex* v = vertex_pool.construct();
     vertices.push_back(v);
     return v;
   }
@@ -308,38 +311,3 @@ public:
     }
   }
 };
-
-#src
-#define BOOST_TEST_DYN_LINK
-#define BOOST_TEST_MAIN
-#include <boost/test/unit_test.hpp>
-
-BOOST_AUTO_TEST_CASE(init) {
-  vertex v;
-  BOOST_CHECK(v.degree == 0);
-}
-
-void checkMarks(vertex* v) {
-  foreach_edge(edg, v) {
-    BOOST_CHECK(!edg->vtx->mark);
-  }
-}
-
-BOOST_AUTO_TEST_CASE(distinct) {
-  vertex v;
-  vertex v1,v2,v3;
-  edge e1,e2,e3;
-  v.degree = 3;
-  e1.vtx = &v1; e1.prev = &e3; e1.next = &e2;
-  e2.vtx = &v2; e2.prev = &e1; e2.next = &e3;
-  e3.vtx = &v3; e3.prev = &e2; e3.next = &e1;
-  v.root_edge = &e1;
-
-  BOOST_CHECK(v.distinct());
-  checkMarks(&v);
-  e2.vtx = &v1;
-  BOOST_CHECK(!v.distinct());
-  checkMarks(&v);
-}
-
-#end

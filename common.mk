@@ -1,4 +1,4 @@
-CXXFLAGS += $(shell pkg-config --cflags $(packages))
+CXXFLAGS += $(shell pkg-config --cflags $(packages)) -I.
 LDFLAGS += $(shell pkg-config --libs $(packages))
 
 define pywrap

@@ -8,8 +8,11 @@
 #include <algorithm>
 #include <vector>
 #include <limits.h>
+#include <map>
+#include <aubio.h>
 
 #include "hilbert.h"
+#include "five-color.h"
 
 using namespace std;
 
@@ -41,18 +44,21 @@ struct region {
   }
 };
 
-static inline vector<int>::iterator find_vertex(vector<int>& regions, int index) {
+typedef map<int,vertex*> region_map;
+
+static inline region_map::iterator find_vertex(region_map& regions, int index) {
   assert(index >= 0);
-  return upper_bound(regions.begin(), regions.end(), index) - 1;
+  return --regions.upper_bound(index);
 }
 
 static inline void traverse_region(region r,
-                                   int region_index,
-                                   vector<int>& regions,
-                                   int nsize,
-                                   bitmask_t coords[2])
+                                   vertex* vtx,
+                                   five_color& fc,
+                                   region_map& regions,
+                                   int nsize)
 {
-  bitmask_t orig_coords[2];
+  bitmask_t coords[2], orig_coords[2];
+  hilbert_i2c(2, nsize, r.start, coords);
   orig_coords[0] = coords[0];
   orig_coords[1] = coords[1];
 
@@ -87,9 +93,9 @@ static inline void traverse_region(region r,
         // new region
         auto it = find_vertex(regions, index);
         assert(it != regions.end());
-        add_edge(region_index, it-regions.begin());
-        foreign_region.start = *it++;
-        foreign_region.end = it == regions.end() ? INT_MAX : *it;
+        fc.add_edge(vtx, it->second);
+        foreign_region.start = it->first;
+        foreign_region.end = it == regions.end() ? INT_MAX : (++it)->first;
       }
     }
 
@@ -112,6 +118,109 @@ static inline void traverse_region(region r,
 }
 
 static const int BUF_SIZE = 256;
+
+struct audio_file {
+  float* data;
+  int size;
+
+  audio_file(const string& path) {
+    SF_INFO info = {0};
+    SNDFILE* file;
+    file = sf_open(path.c_str(), SFM_READ, &info);
+    size = info.frames;
+    assert(info.channels == 1);
+    data = new float[size];
+    sf_readf_float(file, data, size);
+    sf_close(file);
+  }
+
+  ~audio_file() {
+    delete data;
+  }
+
+  inline float operator[](int i) const {
+    return data[i];
+  }
+};
+
+struct cairo_image {
+  int width, height, stride;
+  unsigned char* data;
+
+  cairo_image(int width, int height)
+    : stride(cairo_format_stride_for_width(CAIRO_FORMAT_RGB24, width)),
+      width(width),
+      height(height)
+  {
+    int size = height*stride;
+    data = new unsigned char[size];
+  }
+
+  ~cairo_image() {
+    delete data;}
+
+  void set(int x, int y, unsigned char r, unsigned char g, unsigned char b) {
+    *(uint32_t*)(data + y*stride + x*4) = r << 16 | g << 8 | b;
+  }
+
+  cairo_surface_t* create_surface() {
+    return cairo_image_surface_create_for_data(data, CAIRO_FORMAT_RGB24, width, height, stride);
+  }
+};
+
+static const float colors[][3] = {
+  {1,1,1},
+  {1,0,1},
+  {1,1,0},
+  {0,1,1},
+  {0,0,1}
+};
+
+void draw_region(audio_file& resampled_audio, int nsize, region& r, int color) {
+  int w = 1 << nsize;
+  cairo_image image(w, w);
+  for (int i=r.start; i<r.end; i++) {
+    bitmask_t coords[2];
+    hilbert_i2c(2, nsize, i, coords);
+    const float* col = colors[color];
+    float v = resampled_audio[i];
+    image.set(coords[0], coords[1], col[0]*v, col[1]*v, col[2]*v);
+  }
+}
+
+void draw(audio_file& audio, int nsize, region_map& regions) {
+  for (auto it=regions.begin(); it != regions.end();) {
+    region r;
+    r.start = it->first;
+    int color = it->second->color;
+    ++it;
+    r.end = it == regions.end() ? audio.size : it->first;
+    draw_region(audio, nsize, r, color);
+  }
+}
+
+void grain() {
+  audio_file audio("foo");
+  region_map regions;
+  five_color fc;
+
+  // detect
+
+  // resample
+
+  const int nsize = 8;
+  for (auto it=regions.begin(); it != regions.end();) {
+    region r;
+    r.start = it->first;
+    vertex* v = it->second;
+    ++it;
+    r.end = it == regions.end() ? 0 : it->first;
+    traverse_region(r, v, fc, regions, nsize);
+  }
+
+  fc.color();
+  draw(audio, nsize, regions);
+}
 
 void create_grain_map(char* path, env_fol* env, int nsize) {
   SF_INFO info = {0};

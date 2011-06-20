@@ -1,4 +1,4 @@
-packages = sndfile samplerate cairo python-2.7 pycairo
+packages = sndfile samplerate cairo python-2.7 pycairo aubio
 
 CXXFLAGS = -std=c++0x -g
 LDFLAGS = -lboost_unit_test_framework

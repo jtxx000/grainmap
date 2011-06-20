@@ -34,4 +34,4 @@ root:
 check-syntax:
 	cp $(CHK_SOURCES) bin
 	make -s -C bin -I.. VPATH=.. -f ../Makefile $(CHK_SOURCES:.lzz=.cpp)
-	cd bin && g++ -c -o /dev/null $(CXXFLAGS) $(LDFLAGS) $(CHK_SOURCES:.lzz=.cpp)
+	cd bin && g++ -S -o /dev/null -I.. $(CXXFLAGS) $(LDFLAGS) $(CHK_SOURCES:.lzz=.cpp)

@@ -1,8 +1,11 @@
 #include <list>
 #include <vector>
 #include <stack>
+#include <boost/pool/object_pool.hpp>
+#include <unordered_map>
 
 using namespace std;
+using namespace boost;
 
 #include <stdio.h>
 
@@ -59,8 +62,26 @@ struct vertex {
   vertex_stack::iterator stack_pos;
   vertex_color color;
   bool mark;
+  unordered_map<vertex*,edge*> edge_map;
 
   vertex() : root_edge(0), degree(0), type(s_none), color(0), mark(false) {
+  }
+
+  void add_edge(vertex* other, object_pool<edge>& pool) {
+    if (edge_map.find(other) != edge_map.end())
+      return;
+
+    edge* e = pool.malloc();
+    e->prev = root_edge;
+    e->next = root_edge->next;
+    root_edge->next->prev = e;
+    root_edge->next = e;
+    root_edge = e;
+
+    edge_map.insert(pair<vertex*,edge*>(other, e));
+
+    if (!other->edge_map.empty())
+      e->pos = other->edge_map[this];
   }
 
   void remove() {
@@ -205,124 +226,137 @@ struct vertex {
 edge_iterator::edge_iterator(vertex* v) : i(v->degree), e(v->root_edge) {
 }
 
-void five_color_vertices(vector<vertex*>& xs) {
-  vertex_stack s4, s5;
-  stack<pair<vertex*, vertex*> > sd;
+class five_color {
+  object_pool<edge> edge_pool;
+  object_pool<vertex> vertex_pool;
+  vector<vertex*> vertices;
 
-  printf("size: %d\n", xs.size());
-
-  for (vector<vertex*>::iterator v=xs.begin(); v != xs.end(); ++v)
-    (**v).push_to(&s4,&s5);
-
-  for (;;) {
-    while (!s4.empty()) {
-      vertex* v = s4.front();
-      printf("\n== pop s4 %p %d ==\n", v, v->degree);
-      s4.pop_front();
-      v->remove();
-      sd.push(pair<vertex*,vertex*>(v,0));
-      // degree has decreased by one
-      foreach_edge(edg, v) {
-        printf("s4 edge %p\n", edg->vtx);
-        edg->vtx->push_to(&s4, &s5);
-      }
-    }
-
-    if (s5.empty())
-      break;
-
-    printf("pop s5\n");
-
-    vertex* v = s5.front();
-    s5.pop_front();
-    v->remove();
-    sd.push(pair<vertex*,vertex*>(v,0));
-    edge *v1=v->find_min_edge(), *v2=v1->next, *v3=v2->next, *v4=v3->next, *a, *b;
-    if (v1->vtx->adjacent_to(v3->vtx)) {
-      a = v1; b = v3;
-    } else {
-      a = v2; b = v4;
-    }
-
-    a->vtx->pop_from(&s4,&s5);
-    b->vtx->pop_from(&s4,&s5);
-    b->identify(a);
-    foreach_edge(edg, v) {
-      edg->vtx->push_to(&s4,&s5);
-    }
-    sd.push(pair<vertex*,vertex*>(a->vtx,b->vtx));
-  }
-
-  while (!sd.empty()) {
-    pair<vertex*,vertex*> v(sd.top());
-    printf("color %p\n", v.first);
-    sd.pop();
-    if (v.second)
-      v.first->color = v.second->color;
-    else
-      v.first->assign_color();
-  }
-}
-
-extern "C" {
-  struct five_color {
-    struct fc_vertex {
-      edge* edges;
-      int numEdges;
-      vertex vtx;
-    }* vertices;
-    int numVertices;
-  };
-
-  five_color* newFiveColor(int numVertices) {
-    five_color* fc = new five_color();
-    fc->vertices = new five_color::fc_vertex[numVertices];
-    fc->numVertices = numVertices;
-    return fc;
-  }
-
-  void deletefive_color(five_color* c) {
-    for (int i=0; i<c->numVertices; i++)
-      delete c->vertices[i].edges;
-    delete c->vertices;
-    delete c;
-  }
-
-  five_color::fc_vertex* initVertex(five_color* c, int vertex, int size) {
-    five_color::fc_vertex* v = c->vertices + vertex;
-    printf("init %p %d\n", &v->vtx, size);
-    v->edges = new edge[size];
-    v->numEdges = size;
-    v->vtx.degree = size;
-    for (int i=0; i<v->numEdges; i++) {
-      v->edges[i].next = v->edges + (i+1)%v->numEdges;
-      v->edges[i].prev = v->edges + (i-1+v->numEdges)%v->numEdges;
-    }
-    if (size)
-      v->vtx.root_edge = v->edges;
+public:
+  vertex* create_vertex() {
+    vertex* v = vertex_pool.malloc();
+    vertices.push_back(v);
     return v;
   }
 
-  void setEdge(five_color* c, five_color::fc_vertex* fromVertex, int fromEdge, int toVertex, int toEdge) {
-    edge* e = fromVertex->edges + fromEdge;
-    five_color::fc_vertex* v = c->vertices + toVertex;
-    e->vtx = &v->vtx;
-    printf("set edge %p:%d -> %d/%p:%d\n", &fromVertex->vtx, fromEdge, toVertex, e->vtx, toEdge);
-    e->pos = v->edges + toEdge;
-  }
+  void color(vector<vertex*>& vertices) {
+    vertex_stack s4, s5;
+    stack<pair<vertex*, vertex*> > sd;
 
-  int vertexColor(five_color::fc_vertex* v) {
-    return v->vtx.color;
-  }
+    printf("size: %d\n", vertices.size());
 
-  void run_five_color(five_color* c) {
-    vector<vertex*> vs;
-    vs.reserve(c->numVertices);
-    for (int i=0; i<c->numVertices; i++)
-      vs.push_back(&c->vertices[i].vtx);
-    five_color_vertices(vs);
+    for (vector<vertex*>::iterator v=vertices.begin(); v != vertices.end(); ++v)
+      (**v).push_to(&s4,&s5);
+
+    for (;;) {
+      while (!s4.empty()) {
+        vertex* v = s4.front();
+        printf("\n== pop s4 %p %d ==\n", v, v->degree);
+        s4.pop_front();
+        v->remove();
+        sd.push(pair<vertex*,vertex*>(v,0));
+        // degree has decreased by one
+        foreach_edge(edg, v) {
+          printf("s4 edge %p\n", edg->vtx);
+          edg->vtx->push_to(&s4, &s5);
+        }
+      }
+
+      if (s5.empty())
+        break;
+
+      printf("pop s5\n");
+
+      vertex* v = s5.front();
+      s5.pop_front();
+      v->remove();
+      sd.push(pair<vertex*,vertex*>(v,0));
+      edge *v1=v->find_min_edge(), *v2=v1->next, *v3=v2->next, *v4=v3->next, *a, *b;
+      if (v1->vtx->adjacent_to(v3->vtx)) {
+        a = v1; b = v3;
+      } else {
+        a = v2; b = v4;
+      }
+
+      a->vtx->pop_from(&s4,&s5);
+      b->vtx->pop_from(&s4,&s5);
+      b->identify(a);
+      foreach_edge(edg, v) {
+        edg->vtx->push_to(&s4,&s5);
+      }
+      sd.push(pair<vertex*,vertex*>(a->vtx,b->vtx));
+    }
+
+    while (!sd.empty()) {
+      pair<vertex*,vertex*> v(sd.top());
+      printf("color %p\n", v.first);
+      sd.pop();
+      if (v.second)
+        v.first->color = v.second->color;
+      else
+        v.first->assign_color();
+    }
   }
-}
+};
+
+// extern "C" {
+//   struct five_color {
+//     struct fc_vertex {
+//       edge* edges;
+//       int numEdges;
+//       vertex vtx;
+//     }* vertices;
+//     int numVertices;
+//   };
+
+//   five_color* newFiveColor(int numVertices) {
+//     five_color* fc = new five_color();
+//     fc->vertices = new five_color::fc_vertex[numVertices];
+//     fc->numVertices = numVertices;
+//     return fc;
+//   }
+
+//   void deletefive_color(five_color* c) {
+//     for (int i=0; i<c->numVertices; i++)
+//       delete c->vertices[i].edges;
+//     delete c->vertices;
+//     delete c;
+//   }
+
+//   five_color::fc_vertex* initVertex(five_color* c, int vertex, int size) {
+//     five_color::fc_vertex* v = c->vertices + vertex;
+//     printf("init %p %d\n", &v->vtx, size);
+//     v->edges = new edge[size];
+//     v->numEdges = size;
+//     v->vtx.degree = size;
+//     for (int i=0; i<v->numEdges; i++) {
+//       v->edges[i].next = v->edges + (i+1)%v->numEdges;
+//       v->edges[i].prev = v->edges + (i-1+v->numEdges)%v->numEdges;
+//     }
+//     if (size)
+//       v->vtx.root_edge = v->edges;
+//     return v;
+//   }
+
+//   void setEdge(five_color* c, five_color::fc_vertex* fromVertex, int fromEdge, int toVertex, int toEdge) {
+//     edge* e = fromVertex->edges + fromEdge;
+//     five_color::fc_vertex* v = c->vertices + toVertex;
+//     e->vtx = &v->vtx;
+//     printf("set edge %p:%d -> %d/%p:%d\n", &fromVertex->vtx, fromEdge, toVertex, e->vtx, toEdge);
+//     e->pos = v->edges + toEdge;
+//   }
+
+//   int vertexColor(five_color::fc_vertex* v) {
+//     return v->vtx.color;
+//   }
+
+//   void run_five_color(five_color* c) {
+//     vector<vertex*> vs;
+//     vs.reserve(c->numVertices);
+//     for (int i=0; i<c->numVertices; i++)
+//       vs.push_back(&c->vertices[i].vtx);
+//     five_color_vertices(vs);
+//   }
+// }
 
 
 #define BOOST_TEST_DYN_LINK

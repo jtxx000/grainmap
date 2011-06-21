@@ -59,12 +59,10 @@ static inline void traverse_region(region r,
                                    region_map& regions,
                                    int nsize)
 {
-  printf("traverse begin\n");
+  //printf("traverse begin\n");
 
   bitmask_t coords[2], orig_coords[2];
   hilbert_i2c(2, nsize, r.start, coords);
-  orig_coords[0] = coords[0];
-  orig_coords[1] = coords[1];
 
   int nx, ny;
   if (r.start) {
@@ -76,48 +74,50 @@ static inline void traverse_region(region r,
     nx = 0;
     ny = -1;
   }
+  bitmask_t foreign_coords[2];
+  orig_coords[0] = foreign_coords[0] = coords[0] + nx;
+  orig_coords[1] = foreign_coords[1] = coords[1] + ny;
 
-  region foreign_region;
+  int iter = 0;
+  region foreign_region = {0,-1};
   do {
-    bitmask_t foreign_coords[2];
-    foreign_coords[0] = coords[0] + nx;
-    foreign_coords[1] = coords[1] + ny;
-    printf("traverse (%d,%d) (%d,%d) (%d,%d)\n", coords[0], coords[1], nx, ny, foreign_coords[0], foreign_coords[1]);
+    //printf("traverse (%d,%d) (%d,%d) (%d,%d) (%d,%d) %d\n", coords[0], coords[1], nx, ny, foreign_coords[0], foreign_coords[1], orig_coords[0], orig_coords[1], iter);
 
-    {
-      for (int y=0; y<20; y++) {
-        for (int x=0; x<20; x++) {
-          bitmask_t cs[2];
-          cs[0] = x;
-          cs[1] = y;
-          putchar((coords[0] == cs[0] && coords[1] == cs[1]) ?
-                  (ny == -1 ? '^' : ny == 1 ? 'v' : nx == 1 ? '>' : '<') :
-                  (foreign_coords[0] == cs[0] && foreign_coords[1] == cs[1]) ? '*' :
-                  r.contains(hilbert_c2i(2, nsize, cs)) ? '#' : ' ');
-        }
-        putchar('\n');
-      }
-    }
+    // {
+    //   for (int y=0; y<64; y++) {
+    //     for (int x=0; x<64; x++) {
+    //       bitmask_t cs[2];
+    //       cs[0] = x;
+    //       cs[1] = y;
+    //       putchar((coords[0] == cs[0] && coords[1] == cs[1]) ?
+    //               (ny == -1 ? '^' : ny == 1 ? 'v' : nx == 1 ? '>' : '<') :
+    //               (foreign_coords[0] == cs[0] && foreign_coords[1] == cs[1]) ? '*' :
+    //               r.contains(hilbert_c2i(2, nsize, cs)) ? '#' : ' ');
+    //     }
+    //     putchar('\n');
+    //   }
+    // }
 
     int index;
     if (in_bounds(nsize, foreign_coords) &&
         !(foreign_region.contains(index=hilbert_c2i(2, nsize, foreign_coords))))
     {
-      printf("traverse handle %d %d\n", index, r.contains(index));
+      //printf("traverse handle %d %d\n", index, r.contains(index));
       if (r.contains(index)) {
         coords[0] = foreign_coords[0];
         coords[1] = foreign_coords[1];
         // rotate normal counterclockwise
-        printf("traverse rotate normal counterclockwise\n");
+        //printf("traverse rotate normal counterclockwise\n");
         int tnx = nx;
         nx = ny;
         ny = -tnx;
       } else {
-        printf("traverse new region\n");
+        //printf("traverse new region\n");
         // new region
         auto it = find_vertex(regions, index);
         assert(it != regions.end());
-        printf("add edge %p -> %p\n", vtx, it->second);
+        assert(it->second != vtx);
+        //printf("add edge %p -> %p\n", vtx, it->second);
         fc.add_edge(vtx, it->second);
         foreign_region.start = it->first;
         foreign_region.end = it == regions.end() ? INT_MAX : (++it)->first;
@@ -130,7 +130,7 @@ static inline void traverse_region(region r,
     if (!(in_bounds(nsize, coords) &&
           r.contains(hilbert_c2i(2, nsize, coords))))
     {
-      printf("traverse go back\n");
+      //printf("traverse go back\n");
       // go back
       coords[0] += ny;
       coords[1] -= nx;
@@ -140,7 +140,11 @@ static inline void traverse_region(region r,
       nx = -ny;
       ny = tnx;
     }
-  } while (coords[0] != orig_coords[0] || coords[1] != orig_coords[1]);
+    iter++;
+
+    foreign_coords[0] = coords[0] + nx;
+    foreign_coords[1] = coords[1] + ny;
+  } while (foreign_coords[0] != orig_coords[0] || foreign_coords[1] != orig_coords[1]);
 }
 
 static const int BUF_SIZE = 256;
@@ -219,7 +223,7 @@ struct grain_draw {
       if (i >= end_samp) {
         color = it->second->color;
         end_samp = ++it == end ? INT_MAX : it->first;
-        printf("process color %d %d\n", color, end_samp);
+        //printf("process color %d %d\n", color, end_samp);
       }
 
       bitmask_t coords[2];
@@ -294,7 +298,7 @@ static unique_ptr<audio_data> read_and_detect(five_color& fc,
   int cur_sample = 0;
   int num;
   while ((num=sf_readf_float(file, buf.get(), BUF_SIZE))) {
-    printf("num %d\n", num);
+    //printf("num %d\n", num);
 
     for (int chan=0; chan<info.channels; chan++)
       for (int i=0; i<num; i++) {
@@ -308,7 +312,7 @@ static unique_ptr<audio_data> read_and_detect(five_color& fc,
       // TODO backtrack to zero crossing
       // TODO record actual cur_sample
       int pos = max((int)((cur_sample - BUF_SIZE*4)*ratio), 0);
-      printf("onset %d %d\n", pos, cur_sample);
+      //printf("onset %d %d\n", pos, cur_sample);
       ins = regions.insert(ins, region_map::value_type(pos,
                                                        fc.create_vertex()));
     }
@@ -329,7 +333,7 @@ static void construct_edges(five_color& fc, region_map& regions, int nsize) {
     r.start = it->first;
     vertex* v = it->second;
     ++it;
-    r.end = it == regions.end() ? 0 : it->first;
+    r.end = it == regions.end() ? INT_MAX : it->first;
     traverse_region(r, v, fc, regions, nsize);
   }
 }

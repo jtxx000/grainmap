@@ -199,11 +199,11 @@ struct cairo_image {
 };
 
 static const float colors[][3] = {
-  {255,255,255},
-  {255,0,255},
-  {255,255,0},
-  {0,255,255},
-  {0,0,255}
+  {102,21,16},
+  {217,53,26},
+  {242,199,111},
+  {191,151,39},
+  {32,76,63}
 };
 
 struct grain_draw {
@@ -229,7 +229,7 @@ struct grain_draw {
       bitmask_t coords[2];
       hilbert_i2c(2, nsize, i++, coords);
       const float* col = colors[color];
-      float v = *data++;
+      float v = (*data++)*0.9 + 0.1;
       //printf("    v %f\n", v);
       img.set(coords[0], coords[1], col[0]*v, col[1]*v, col[2]*v);
     }
@@ -284,7 +284,7 @@ static unique_ptr<audio_data> read_and_detect(five_color& fc,
                                               region_map& regions,
                                               int out_size)
 {
-  const char* path = "data/blips.wav";
+  const char* path = "data/bleeps.wav";
   SF_INFO info = {0};
   SNDFILE* file = sf_open(path, SFM_READ, &info);
   assert(file);
@@ -382,7 +382,7 @@ static unique_ptr<cairo_image> resample_and_draw(region_map& regions,
 }
 
 void grain() {
-  const int nsize = 8;
+  const int nsize = 11;
   int out_size = 1 << nsize;
   out_size = out_size*out_size;
   region_map regions;
@@ -393,8 +393,9 @@ void grain() {
   construct_edges(fc, regions, nsize);
   printf("## coloring\n");
   fc.color();
-  printf("## outputting\n");
+  printf("## drawing\n");
   unique_ptr<cairo_image> img = resample_and_draw(regions, *adata, nsize, out_size);
+  printf("## writing\n");
   cairo_surface_t* surface = img->create_surface();
   cairo_surface_write_to_png(surface, "bin/out.png");
   cairo_surface_destroy(surface);

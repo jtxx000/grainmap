@@ -10,6 +10,7 @@
 #include <limits.h>
 #include <map>
 #include <memory>
+#include <string.h>
 #include <aubio.h>
 
 #include "hilbert.h"
@@ -248,31 +249,24 @@ struct audio_data {
   }
 };
 
-void grain() {
+static unique_ptr<audio_data> read_and_detect(five_color& fc,
+                                              region_map& regions,
+                                              int out_size)
+{
   const char* path = "foo.wav";
-
-  unique_ptr<audio_data> adata;
-  int num;
-  const int nsize = 8;
-  int out_size = 1 << nsize;
-  out_size = out_size*out_size;
-  double ratio;
-  region_map regions;
-  five_color fc;
-
-  // read and detect
   SF_INFO info = {0};
   SNDFILE* file = sf_open(path, SFM_READ, &info);
   assert(file);
-  ratio = out_size/info.frames;
-  adata = unique_ptr<audio_data>(new audio_data(info.frames, info.channels));
-  float* buf = new float[info.frames*info.channels];
+  double ratio = out_size/info.frames;
+  unique_ptr<audio_data> adata(new audio_data(info.frames, info.channels));
+  unique_ptr<float[]> buf(new float[info.frames*info.channels]);
   aubio_onset_t* onset = new_aubio_onset(aubio_onset_kl, BUF_SIZE*2, BUF_SIZE, 1);
   region_map::iterator ins = regions.begin();
   fvec_t* in_vec = new_fvec(info.frames, info.channels);
   fvec_t* onset_vec = new_fvec(1,1);
   int cur_sample = 0;
-  while ((num=sf_readf_float(file, buf, BUF_SIZE))) {
+  int num;
+  while ((num=sf_readf_float(file, buf.get(), BUF_SIZE))) {
     for (int chan=0; chan<info.channels; chan++)
       for (int i=0; i<num; i++) {
         adata->data[chan][cur_sample] =
@@ -294,8 +288,10 @@ void grain() {
   del_aubio_onset(onset);
   del_fvec(in_vec);
   del_fvec(onset_vec);
+  return adata;
+}
 
-  // construct edges
+static void construct_edges(five_color& fc, region_map& regions, int nsize) {
   for (auto it=regions.begin(); it != regions.end();) {
     region r;
     r.start = it->first;
@@ -304,83 +300,103 @@ void grain() {
     r.end = it == regions.end() ? 0 : it->first;
     traverse_region(r, v, fc, regions, nsize);
   }
+}
 
-  // resample and draw
-  fc.color();
+static void resample_and_draw(region_map& regions,
+                              audio_data& adata,
+                              int nsize,
+                              int out_size)
+{
   grain_draw draw(regions.begin(), regions.end());
 
   int src_err;
   SRC_STATE* src = src_new(SRC_SINC_FASTEST, 1, &src_err);
   assert(src);
 
-  //float buf[BUF_SIZE];
+  float buf[BUF_SIZE];
   int w = 1 << nsize;
   cairo_image img(w, w);
   env_fol env(.99);
-  int size = out_size;
-  float* out = new float[out_size];
   SRC_DATA data;
-  data.data_in = buf;
-  data.data_out = out;
-  data.src_ratio = ratio;
+  data.src_ratio = out_size/adata.size;
   data.end_of_input = 0;
-  //int num = BUF_SIZE;
-  while (num == BUF_SIZE) {
-    num = data.input_frames = sf_readf_float(file, buf, BUF_SIZE);
-    data.output_frames = size;
+  data.input_frames = BUF_SIZE;
+  data.output_frames = (int)(BUF_SIZE*data.src_ratio + BUF_SIZE);
+  unique_ptr<float[]> out(new float[data.output_frames]);
+  data.data_in = buf;
+  data.data_out = out.get();
 
-    env.process(buf, num);
+  for (int i=0; i<adata.size; i+=BUF_SIZE) {
+    int size = data.input_frames = min(adata.size-i, BUF_SIZE);
+    memset(buf, 0, sizeof(float)*size);
+    for (int chan=0; chan<adata.channels; chan++)
+      for (int j=0; j<BUF_SIZE; j++)
+        buf[j] = max(buf[j], adata.data[chan][i]);
+
+    env.process(buf, data.input_frames);
     src_process(src, &data);
-    assert(data.input_frames_used == num || size < BUF_SIZE);
-
-    size-=data.output_frames_gen;
-    data.data_out += data.output_frames_gen;
+    assert(data.input_frames_used == data.input_frames);
+    draw.process(img, nsize, out.get(), data.output_frames_gen);
   }
-  draw.process(img, nsize, buf, size);
-    //draw(audio, nsize, regions);
 }
 
-void create_grain_map(char* path, env_fol* env, int nsize) {
-  SF_INFO info = {0};
-  SNDFILE* file;
-  file = sf_open(path, SFM_READ, &info);
-  assert(file);
-  assert(info.channels == 1);
-
+void grain() {
+  const int nsize = 8;
   int out_size = 1 << nsize;
-
-  int err;
-  //SRC_STATE* src = src_new(SRC_SINC_BEST_QUALITY, 1, &err);
-  SRC_STATE* src = src_new(SRC_SINC_FASTEST, 1, &err);
-  assert(src);
-
-  double ratio = out_size/(double)info.frames;
-
-  float buf[BUF_SIZE];
-  int size = out_size;
-  float* out = new float[out_size];
-  SRC_DATA data;
-  data.data_in = buf;
-  data.data_out = out;
-  data.src_ratio = ratio;
-  data.end_of_input = 0;
-  int num = BUF_SIZE;
-  while (num == BUF_SIZE) {
-    num = data.input_frames = sf_readf_float(file, buf, BUF_SIZE);
-    data.output_frames = size;
-
-    env->process(buf, num);
-    src_process(src, &data);
-    assert(data.input_frames_used == num || size < BUF_SIZE);
-
-    size-=data.output_frames_gen;
-    data.data_out += data.output_frames_gen;
-  }
-
-  // AudioEnv* audio = malloc(sizeof(AudioEnv));
-  // audio->data = out;
-  // audio->size = out_size - size;
-
-  sf_close(file);
-  src_delete(src);
+  out_size = out_size*out_size;
+  region_map regions;
+  five_color fc;
+  unique_ptr<audio_data> adata = read_and_detect(fc, regions, out_size);
+  construct_edges(fc, regions, nsize);
+  fc.color();
+  resample_and_draw(regions, *adata, nsize, out_size);
 }
+
+int main() {
+  grain();
+}
+
+// void create_grain_map(char* path, env_fol* env, int nsize) {
+//   SF_INFO info = {0};
+//   SNDFILE* file;
+//   file = sf_open(path, SFM_READ, &info);
+//   assert(file);
+//   assert(info.channels == 1);
+
+//   int out_size = 1 << nsize;
+
+//   int err;
+//   //SRC_STATE* src = src_new(SRC_SINC_BEST_QUALITY, 1, &err);
+//   SRC_STATE* src = src_new(SRC_SINC_FASTEST, 1, &err);
+//   assert(src);
+
+//   double ratio = out_size/(double)info.frames;
+
+//   float buf[BUF_SIZE];
+//   int size = out_size;
+//   float* out = new float[out_size];
+//   SRC_DATA data;
+//   data.data_in = buf;
+//   data.data_out = out;
+//   data.src_ratio = ratio;
+//   data.end_of_input = 0;
+//   int num = BUF_SIZE;
+//   while (num == BUF_SIZE) {
+//     num = data.input_frames = sf_readf_float(file, buf, BUF_SIZE);
+//     data.output_frames = size;
+
+//     env->process(buf, num);
+//     src_process(src, &data);
+//     assert(data.input_frames_used == num || size < BUF_SIZE);
+
+//     size-=data.output_frames_gen;
+//     data.data_out += data.output_frames_gen;
+//   }
+
+//   // AudioEnv* audio = malloc(sizeof(AudioEnv));
+//   // audio->data = out;
+//   // audio->size = out_size - size;
+
+//   sf_close(file);
+//   src_delete(src);
+// }

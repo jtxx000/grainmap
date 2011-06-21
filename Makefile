@@ -5,11 +5,11 @@ LDFLAGS = -lboost_unit_test_framework
 
 include common.mk
 
-all: five-color-tests
+all: five-color-tests grainmap
 
 out.png: create-grainmap.py _grainmap.so
 	$(PY) $<
 
-grainmap: grainmap.cpp
+grainmap: grainmap.cpp hilbert.c five-color.cpp
 
 #$(eval $(call pywrap,grainmap))

@@ -9,6 +9,7 @@
 #include <vector>
 #include <limits.h>
 #include <map>
+#include <memory>
 #include <aubio.h>
 
 #include "hilbert.h"
@@ -176,39 +177,125 @@ static const float colors[][3] = {
   {0,0,1}
 };
 
-void draw_region(audio_file& resampled_audio, int nsize, region& r, int color) {
-  int w = 1 << nsize;
-  cairo_image image(w, w);
-  for (int i=r.start; i<r.end; i++) {
-    bitmask_t coords[2];
-    hilbert_i2c(2, nsize, i, coords);
-    const float* col = colors[color];
-    float v = resampled_audio[i];
-    image.set(coords[0], coords[1], col[0]*v, col[1]*v, col[2]*v);
-  }
-}
+struct grain_draw {
+  region_map::iterator it, end;
+  int color, end_samp, i;
 
-void draw(audio_file& audio, int nsize, region_map& regions) {
-  for (auto it=regions.begin(); it != regions.end();) {
-    region r;
-    r.start = it->first;
-    int color = it->second->color;
-    ++it;
-    r.end = it == regions.end() ? audio.size : it->first;
-    draw_region(audio, nsize, r, color);
+  grain_draw(region_map::iterator begin, region_map::iterator end)
+    : it(begin),
+      end(end),
+      end_samp(-1)
+  {
   }
-}
+
+  void process(cairo_image img, int nsize, float* data, int size) {
+    while (--size>=0) {
+      if (i >= end_samp) {
+        color = it->second->color;
+        end_samp = ++it == end ? INT_MAX : it->first;
+      }
+
+      bitmask_t coords[2];
+      hilbert_i2c(2, nsize, i++, coords);
+      const float* col = colors[color];
+      float v = *data++;
+      img.set(coords[0], coords[1], col[0]*v, col[1]*v, col[2]*v);
+    }
+  }
+};
+
+// void draw_region(audio_file& resampled_audio, int nsize, region& r, int color) {
+//   int w = 1 << nsize;
+//   cairo_image image(w, w);
+//   for (int i=r.start; i<r.end; i++) {
+//     bitmask_t coords[2];
+//     hilbert_i2c(2, nsize, i, coords);
+//     const float* col = colors[color];
+//     float v = resampled_audio[i];
+//     image.set(coords[0], coords[1], col[0]*v, col[1]*v, col[2]*v);
+//   }
+// }
+
+// void draw(audio_file& audio, int nsize, region_map& regions) {
+//   for (auto it=regions.begin(); it != regions.end();) {
+//     region r;
+//     r.start = it->first;
+//     int color = it->second->color;
+//     ++it;
+//     r.end = it == regions.end() ? audio.size : it->first;
+//     draw_region(audio, nsize, r, color);
+//   }
+// }
+
+struct audio_data {
+  float** data;
+  int size;
+  int channels;
+
+  audio_data(int size, int channels)
+    : data(new float*[channels]),
+      size(size),
+      channels(channels)
+  {
+    for (int i=0; i<channels; i++)
+      data[i] = new float[size];
+  }
+
+  ~audio_data() {
+    for (int i=0; i<channels; i++)
+      delete[] data[i];
+    delete[] data;
+  }
+};
 
 void grain() {
-  audio_file audio("foo");
+  const char* path = "foo.wav";
+
+  unique_ptr<audio_data> adata;
+  int num;
+  const int nsize = 8;
+  int out_size = 1 << nsize;
+  out_size = out_size*out_size;
+  double ratio;
   region_map regions;
   five_color fc;
 
-  // detect
+  // read and detect
+  SF_INFO info = {0};
+  SNDFILE* file = sf_open(path, SFM_READ, &info);
+  assert(file);
+  ratio = out_size/info.frames;
+  adata = unique_ptr<audio_data>(new audio_data(info.frames, info.channels));
+  float* buf = new float[info.frames*info.channels];
+  aubio_onset_t* onset = new_aubio_onset(aubio_onset_kl, BUF_SIZE*2, BUF_SIZE, 1);
+  region_map::iterator ins = regions.begin();
+  fvec_t* in_vec = new_fvec(info.frames, info.channels);
+  fvec_t* onset_vec = new_fvec(1,1);
+  int cur_sample = 0;
+  while ((num=sf_readf_float(file, buf, BUF_SIZE))) {
+    for (int chan=0; chan<info.channels; chan++)
+      for (int i=0; i<num; i++) {
+        adata->data[chan][cur_sample] =
+          in_vec->data[chan][cur_sample] =
+          buf[i*info.channels + chan];
+      }
 
-  // resample
+    aubio_onset(onset, in_vec, onset_vec);
+    if (**onset_vec->data) {
+      // TODO backtrack to zero crossing
+      // TODO record actual cur_sample
+      ins = regions.insert(ins,
+                           region_map::value_type((cur_sample - BUF_SIZE*4)*ratio,
+                                                  fc.create_vertex()));
+    }
 
-  const int nsize = 8;
+    cur_sample += num;
+  }
+  del_aubio_onset(onset);
+  del_fvec(in_vec);
+  del_fvec(onset_vec);
+
+  // construct edges
   for (auto it=regions.begin(); it != regions.end();) {
     region r;
     r.start = it->first;
@@ -218,8 +305,39 @@ void grain() {
     traverse_region(r, v, fc, regions, nsize);
   }
 
+  // resample and draw
   fc.color();
-  draw(audio, nsize, regions);
+  grain_draw draw(regions.begin(), regions.end());
+
+  int src_err;
+  SRC_STATE* src = src_new(SRC_SINC_FASTEST, 1, &src_err);
+  assert(src);
+
+  //float buf[BUF_SIZE];
+  int w = 1 << nsize;
+  cairo_image img(w, w);
+  env_fol env(.99);
+  int size = out_size;
+  float* out = new float[out_size];
+  SRC_DATA data;
+  data.data_in = buf;
+  data.data_out = out;
+  data.src_ratio = ratio;
+  data.end_of_input = 0;
+  //int num = BUF_SIZE;
+  while (num == BUF_SIZE) {
+    num = data.input_frames = sf_readf_float(file, buf, BUF_SIZE);
+    data.output_frames = size;
+
+    env.process(buf, num);
+    src_process(src, &data);
+    assert(data.input_frames_used == num || size < BUF_SIZE);
+
+    size-=data.output_frames_gen;
+    data.data_out += data.output_frames_gen;
+  }
+  draw.process(img, nsize, buf, size);
+    //draw(audio, nsize, regions);
 }
 
 void create_grain_map(char* path, env_fol* env, int nsize) {

@@ -59,6 +59,8 @@ static inline void traverse_region(region r,
                                    region_map& regions,
                                    int nsize)
 {
+  printf("traverse begin\n");
+
   bitmask_t coords[2], orig_coords[2];
   hilbert_i2c(2, nsize, r.start, coords);
   orig_coords[0] = coords[0];
@@ -80,21 +82,42 @@ static inline void traverse_region(region r,
     bitmask_t foreign_coords[2];
     foreign_coords[0] = coords[0] + nx;
     foreign_coords[1] = coords[1] + ny;
+    printf("traverse (%d,%d) (%d,%d) (%d,%d)\n", coords[0], coords[1], nx, ny, foreign_coords[0], foreign_coords[1]);
+
+    {
+      for (int y=0; y<20; y++) {
+        for (int x=0; x<20; x++) {
+          bitmask_t cs[2];
+          cs[0] = x;
+          cs[1] = y;
+          putchar((coords[0] == cs[0] && coords[1] == cs[1]) ?
+                  (ny == -1 ? '^' : ny == 1 ? 'v' : nx == 1 ? '>' : '<') :
+                  (foreign_coords[0] == cs[0] && foreign_coords[1] == cs[1]) ? '*' :
+                  r.contains(hilbert_c2i(2, nsize, cs)) ? '#' : ' ');
+        }
+        putchar('\n');
+      }
+    }
+
     int index;
     if (in_bounds(nsize, foreign_coords) &&
         !(foreign_region.contains(index=hilbert_c2i(2, nsize, foreign_coords))))
     {
+      printf("traverse handle %d %d\n", index, r.contains(index));
       if (r.contains(index)) {
         coords[0] = foreign_coords[0];
         coords[1] = foreign_coords[1];
         // rotate normal counterclockwise
+        printf("traverse rotate normal counterclockwise\n");
         int tnx = nx;
         nx = ny;
         ny = -tnx;
       } else {
+        printf("traverse new region\n");
         // new region
         auto it = find_vertex(regions, index);
         assert(it != regions.end());
+        printf("add edge %p -> %p\n", vtx, it->second);
         fc.add_edge(vtx, it->second);
         foreign_region.start = it->first;
         foreign_region.end = it == regions.end() ? INT_MAX : (++it)->first;
@@ -107,6 +130,7 @@ static inline void traverse_region(region r,
     if (!(in_bounds(nsize, coords) &&
           r.contains(hilbert_c2i(2, nsize, coords))))
     {
+      printf("traverse go back\n");
       // go back
       coords[0] += ny;
       coords[1] -= nx;
@@ -159,7 +183,7 @@ struct cairo_image {
   }
 
   ~cairo_image() {
-    delete data;}
+    delete[] data;}
 
   void set(int x, int y, unsigned char r, unsigned char g, unsigned char b) {
     *(uint32_t*)(data + y*stride + x*4) = r << 16 | g << 8 | b;
@@ -171,11 +195,11 @@ struct cairo_image {
 };
 
 static const float colors[][3] = {
-  {1,1,1},
-  {1,0,1},
-  {1,1,0},
-  {0,1,1},
-  {0,0,1}
+  {255,255,255},
+  {255,0,255},
+  {255,255,0},
+  {0,255,255},
+  {0,0,255}
 };
 
 struct grain_draw {
@@ -185,21 +209,24 @@ struct grain_draw {
   grain_draw(region_map::iterator begin, region_map::iterator end)
     : it(begin),
       end(end),
-      end_samp(-1)
+      end_samp(-1),
+      i(0)
   {
   }
 
-  void process(cairo_image img, int nsize, float* data, int size) {
+  void process(cairo_image& img, int nsize, float* data, int size) {
     while (--size>=0) {
       if (i >= end_samp) {
         color = it->second->color;
         end_samp = ++it == end ? INT_MAX : it->first;
+        printf("process color %d %d\n", color, end_samp);
       }
 
       bitmask_t coords[2];
       hilbert_i2c(2, nsize, i++, coords);
       const float* col = colors[color];
       float v = *data++;
+      //printf("    v %f\n", v);
       img.set(coords[0], coords[1], col[0]*v, col[1]*v, col[2]*v);
     }
   }
@@ -253,34 +280,37 @@ static unique_ptr<audio_data> read_and_detect(five_color& fc,
                                               region_map& regions,
                                               int out_size)
 {
-  const char* path = "foo.wav";
+  const char* path = "data/blips.wav";
   SF_INFO info = {0};
   SNDFILE* file = sf_open(path, SFM_READ, &info);
   assert(file);
-  double ratio = out_size/info.frames;
+  double ratio = out_size/(double)info.frames;
   unique_ptr<audio_data> adata(new audio_data(info.frames, info.channels));
   unique_ptr<float[]> buf(new float[info.frames*info.channels]);
   aubio_onset_t* onset = new_aubio_onset(aubio_onset_kl, BUF_SIZE*2, BUF_SIZE, 1);
   region_map::iterator ins = regions.begin();
-  fvec_t* in_vec = new_fvec(info.frames, info.channels);
+  fvec_t* in_vec = new_fvec(BUF_SIZE, info.channels);
   fvec_t* onset_vec = new_fvec(1,1);
   int cur_sample = 0;
   int num;
   while ((num=sf_readf_float(file, buf.get(), BUF_SIZE))) {
+    printf("num %d\n", num);
+
     for (int chan=0; chan<info.channels; chan++)
       for (int i=0; i<num; i++) {
-        adata->data[chan][cur_sample] =
-          in_vec->data[chan][cur_sample] =
+        adata->data[chan][cur_sample+i] =
+          in_vec->data[chan][i] =
           buf[i*info.channels + chan];
       }
 
     aubio_onset(onset, in_vec, onset_vec);
-    if (**onset_vec->data) {
+    if (**onset_vec->data || !cur_sample) {
       // TODO backtrack to zero crossing
       // TODO record actual cur_sample
-      ins = regions.insert(ins,
-                           region_map::value_type((cur_sample - BUF_SIZE*4)*ratio,
-                                                  fc.create_vertex()));
+      int pos = max((int)((cur_sample - BUF_SIZE*4)*ratio), 0);
+      printf("onset %d %d\n", pos, cur_sample);
+      ins = regions.insert(ins, region_map::value_type(pos,
+                                                       fc.create_vertex()));
     }
 
     cur_sample += num;
@@ -288,6 +318,8 @@ static unique_ptr<audio_data> read_and_detect(five_color& fc,
   del_aubio_onset(onset);
   del_fvec(in_vec);
   del_fvec(onset_vec);
+  sf_close(file);
+
   return adata;
 }
 
@@ -302,10 +334,10 @@ static void construct_edges(five_color& fc, region_map& regions, int nsize) {
   }
 }
 
-static void resample_and_draw(region_map& regions,
-                              audio_data& adata,
-                              int nsize,
-                              int out_size)
+static unique_ptr<cairo_image> resample_and_draw(region_map& regions,
+                                                 audio_data& adata,
+                                                 int nsize,
+                                                 int out_size)
 {
   grain_draw draw(regions.begin(), regions.end());
 
@@ -315,10 +347,10 @@ static void resample_and_draw(region_map& regions,
 
   float buf[BUF_SIZE];
   int w = 1 << nsize;
-  cairo_image img(w, w);
+  unique_ptr<cairo_image> img(new cairo_image(w, w));
   env_fol env(.99);
   SRC_DATA data;
-  data.src_ratio = out_size/adata.size;
+  data.src_ratio = out_size/(double)adata.size;
   data.end_of_input = 0;
   data.input_frames = BUF_SIZE;
   data.output_frames = (int)(BUF_SIZE*data.src_ratio + BUF_SIZE);
@@ -334,10 +366,15 @@ static void resample_and_draw(region_map& regions,
         buf[j] = max(buf[j], adata.data[chan][i]);
 
     env.process(buf, data.input_frames);
-    src_process(src, &data);
+    src_err = src_process(src, &data);
+    assert(!src_err);
     assert(data.input_frames_used == data.input_frames);
-    draw.process(img, nsize, out.get(), data.output_frames_gen);
+    draw.process(*img, nsize, out.get(), data.output_frames_gen);
   }
+
+  src_delete(src);
+
+  return img;
 }
 
 void grain() {
@@ -346,10 +383,17 @@ void grain() {
   out_size = out_size*out_size;
   region_map regions;
   five_color fc;
+  printf("## reading\n");
   unique_ptr<audio_data> adata = read_and_detect(fc, regions, out_size);
+  printf("## constructing edges\n");
   construct_edges(fc, regions, nsize);
+  printf("## coloring\n");
   fc.color();
-  resample_and_draw(regions, *adata, nsize, out_size);
+  printf("## outputting\n");
+  unique_ptr<cairo_image> img = resample_and_draw(regions, *adata, nsize, out_size);
+  cairo_surface_t* surface = img->create_surface();
+  cairo_surface_write_to_png(surface, "bin/out.png");
+  cairo_surface_destroy(surface);
 }
 
 int main() {

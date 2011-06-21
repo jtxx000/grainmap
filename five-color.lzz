@@ -13,6 +13,7 @@ using namespace boost;
 #src
 #include <stdio.h>
 #include <stack>
+#include <assert.h>
 #end
 
 enum vertex_type {s_none, s_4t, s_5t};
@@ -90,6 +91,7 @@ struct vertex {
 
     if (!other->edge_map.empty()) {
       e->pos = other->edge_map[this];
+      assert(e->pos);
       e->pos->pos = e;
     }
 

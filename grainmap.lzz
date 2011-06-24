@@ -208,7 +208,8 @@ struct grain_draw {
       bitmask_t coords[2];
       hilbert_i2c(2, nsize, i++, coords);
       const float* col = colors[color];
-      float v = (*data++)*0.85 + 0.15;
+      //float v = (*data++)*0.85 + 0.15;
+      float v = (*data++);
       //printf("    v %f\n", v);
       img.set(coords[0], coords[1], col[0]*v, col[1]*v, col[2]*v);
     }
@@ -295,6 +296,14 @@ static void construct_edges(five_color& fc, region_map& regions, int nsize) {
   }
 }
 
+// TODO maybe use this elsewhere
+static int lookup_index(int nsize, bitmask_t x, bitmask_t y) {
+  bitmask_t coords[2];
+  coords[0] = x;
+  coords[1] = y;
+  return hilbert_c2i(2, nsize, coords);
+}
+
 static unique_ptr<cairo_image> resample_and_draw(region_map& regions,
                                                  audio_data& adata,
                                                  int nsize,
@@ -332,6 +341,36 @@ static unique_ptr<cairo_image> resample_and_draw(region_map& regions,
     assert(data.input_frames_used == data.input_frames);
     draw.process(*img, nsize, out.get(), data.output_frames_gen);
   }
+
+  bitmask_t x, y;
+  region cur_reg = {0,-1};
+  for (bitmask_t y=0; y<w; y++) {
+    for (bitmask_t x=0; x<w; x++) {
+      int index = lookup_index(nsize, x, y);
+      if (!cur_reg.contains(index)) {
+        auto it = find_vertex(regions, index);
+        // TODO clean
+        cur_reg.start = it->first;
+        ++it;
+        cur_reg.end = it == regions.end() ? INT_MAX : it->first;
+      }
+      if (x == 0 || x == w-1 ||
+          y == 0 || y == w-1 ||
+          !(cur_reg.contains(lookup_index(nsize, x-1, y-1)) &&
+            cur_reg.contains(lookup_index(nsize, x-1, y  )) &&
+            cur_reg.contains(lookup_index(nsize, x-1, y+1)) &&
+
+            cur_reg.contains(lookup_index(nsize, x,   y-1)) &&
+            cur_reg.contains(lookup_index(nsize, x,   y+1)) &&
+
+            cur_reg.contains(lookup_index(nsize, x+1, y-1)) &&
+            cur_reg.contains(lookup_index(nsize, x+1, y  )) &&
+            cur_reg.contains(lookup_index(nsize, x+1, y+1))))
+        img->lighten(x,y);
+
+    }
+  }
+
 
   src_delete(src);
 
@@ -379,6 +418,20 @@ struct cairo_image {
 
   void set(int x, int y, unsigned char r, unsigned char g, unsigned char b) {
     *(uint32_t*)(data + y*stride + x*4) = r << 16 | g << 8 | b;
+  }
+
+  void lighten(int x, int y) {
+    // TODO abstract
+    uint32_t c = *(uint32_t*)(data + y*stride + x*4);
+    int r = c >> 16;
+    int g = (c >> 8) && 0xFF;
+    int b = c && 0xFF;
+    double p = 0.05;
+    double q = 1-p;
+    set(x, y,
+        r*q + 255*p,
+        g*q + 255*p,
+        b*q + 255*p);
   }
 
   Cairo::RefPtr<Cairo::ImageSurface> create_surface() {

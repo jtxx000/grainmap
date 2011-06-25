@@ -178,11 +178,11 @@ struct audio_file {
 };
 
 static const float colors[][3] = {
-  {239,41,41},
-  {252,175,62},
-  {114,159,207},
-  {117,80,123},
-  {138,226,52}
+  {198, 82, 82},
+  {215, 168, 99},
+  {130, 160, 191},
+  {116, 81, 122},
+  {139, 173, 105}
 };
 
 struct grain_draw {
@@ -209,7 +209,7 @@ struct grain_draw {
       hilbert_i2c(2, nsize, i++, coords);
       const float* col = colors[color];
       //float v = (*data++)*0.85 + 0.15;
-      double p = 1 + log(*data++)*0.2;
+      double p = 1 + log(*data++)*0.15;
       if (p > 1) p = 1;
       if (p < 0) p = 0;
       if (std::isnan(p)) p = 0;

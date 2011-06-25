@@ -14,24 +14,23 @@ class grain_widget : public DrawingArea {
 private:
   grainmap gm;
   grainaudio audio;
-
+  
 public:
-  grain_widget() : audio(gm.get_audio(), gm.channel_count()) {
+  grain_widget() : audio(gm) {
     add_events(Gdk::BUTTON_PRESS_MASK           |
                Gdk::POINTER_MOTION_MASK         |
                Gdk::POINTER_MOTION_HINT_MASK);
   }
 
-  void set_region(int x, int y) {
+  void set_point(int x, int y) {
     int start, end;
     double s = get_scale();
-    gm.lookup(x/s, y/s, start, end);
-    audio.set_region(start, end);
+    audio.set_point(x/s, y/s);
   }
 
   bool on_button_press_event(GdkEventButton* event) {
     printf("down %d %d\n", event->x, event->y);
-    set_region(event->x, event->y);
+    set_point(event->x, event->y);
     return true;
   }
 
@@ -44,12 +43,12 @@ public:
     RefPtr<ImageSurface> img = gm.get_surface();
     return min(width/(double)img->get_width(), height/(double)img->get_height());
   }
-  
+
   bool on_motion_notify_event(GdkEventMotion* event) {
     if (!(event->state & GDK_BUTTON1_MASK)) return true;
 
     printf("%d %d\n", event->x, event->y);
-    set_region(event->x, event->y);
+    set_point(event->x, event->y);
     return true;
   }
 

@@ -251,7 +251,7 @@ struct grain_draw {
 static unique_ptr<audio_data> read_and_detect(map<int,int>& regions,
                                               int out_size)
 {
-  const char* path = "data/bleeps.wav";
+  const char* path = "data/freqs.wav";
   SF_INFO info = {0};
   SNDFILE* file = sf_open(path, SFM_READ, &info);
   assert(file);
@@ -484,17 +484,22 @@ public:
     return adata->channels;
   }
 
-  void lookup(int x, int y, int& start, int& stop) {
+  // start and end are samples; starti, endi are hilbert indexes
+  void lookup(int x, int y, int& start, int& stop, int& starti, int& endi) {
     // TODO merge with find_vertex
     bitmask_t coords[2];
     coords[0] = x;
     coords[1] = y;
     int index = hilbert_c2i(2, nsize, coords);
     assert(index >= 0);
+    if (index >= starti && index < endi)
+      return;
     auto it = --region_starts.upper_bound(index);
+    starti = it->first;
     start = it->second;
     ++it;
     // TODO this sort of thing appears in several places
+    endi = it == region_starts.end() ? INT_MAX : it->first;
     stop = it == region_starts.end() ? adata->size : it->second;
   }
 

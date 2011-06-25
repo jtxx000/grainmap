@@ -2,6 +2,7 @@
 #include <jack/jack.h>
 #include <atomic>
 #include <vector>
+#include "grainmap.h"
 #end
 
 #src
@@ -14,10 +15,31 @@
 
 using namespace std;
 
+void step_toward(float& x0, float& y0, float x1, float y1) {
+  float dx = abs(x1-x0), sx = x0<x1 ? 1 : -1;
+  float dy = abs(y1-y0), sy = y0<y1 ? 1 : -1;
+  if (dx < 1.0f && dy < 1.0f) {
+    x0 = x1;
+    y0 = y1;
+    return;
+  }
+  if (dy > dx) {
+    y0 += sy;
+    x0 += (dx/dy)*sx;
+  } else {
+    x0 += sx;
+    y0 += (dy/dx)*sy;
+  }
+}
+
 #end
 
 struct audio_region {
   int start, end;
+};
+
+struct point {
+  float x, y;
 };
 
 // TODO clean up (maybe add another T)
@@ -47,78 +69,95 @@ struct atomic_assign {
 };
 
 struct grainaudio {
-  std::vector<jack_port_t*> output_ports;
-  atomic_assign<audio_region> cur_region;
-  audio_region reg;
+  struct out_port {
+    jack_port_t* port;
+    jack_default_audio_sample_t* buffer;
+  };
+  std::vector<out_port> output_ports;
+  atomic_assign<point> cur_point;
+  grainmap& gm;
   float** audio;
 
+  float x0, y0, x1, y1;
+  int start, end, starti, endi;
   int cur_sample;
   int cur_dir;
+  int counter;
 
-  grainaudio(float** audio, int channels) : audio(audio), cur_sample(-1), cur_dir(1) {
-    reg.start = -1;
-    reg.end = -1;
-
+  grainaudio(grainmap& gm)
+    : gm(gm),
+      audio(gm.get_audio()),
+      x0(0), y0(0), x1(50), y1(50),
+      start(-1), end(-1), starti(-1), endi(-1),
+      cur_sample(-1),
+      cur_dir(1),
+      counter(0)
+  {
     jack_client_t* client;
     CHK(client=jack_client_open("grainaudio", JackNullOption, 0));
     jack_set_process_callback(client, ::process, this);
     jack_on_shutdown(client, jack_shutdown, 0);
-    for (int i=0; i<channels; i++) {
+    for (int i=0; i<gm.channel_count(); i++) {
       ostringstream port_name;
       port_name << "out " << i;
-      output_ports.push_back(jack_port_register(client,
-                                                port_name.str().c_str(),
-                                                JACK_DEFAULT_AUDIO_TYPE,
-                                                JackPortIsOutput | JackPortIsTerminal,
-                                                0));
+      out_port p = {jack_port_register(client,
+                                       port_name.str().c_str(),
+                                       JACK_DEFAULT_AUDIO_TYPE,
+                                       JackPortIsOutput | JackPortIsTerminal,
+                                       0)};
+      output_ports.push_back(p);
     }
 
     CHK(!jack_activate(client));
   }
 
-  void set_region(int start, int end) {
+  void set_point(float x, float y) {
     //printf("setting region %d %d\n", start, end);
-    audio_region new_region {start,end};
-    cur_region.write(new_region);
+    point new_point {x,y};
+    cur_point.write(new_point);
   }
 
   void process(jack_nframes_t nframes) {
-    audio_region* next_reg = cur_region.read();
-    if (next_reg) {
-      reg = *next_reg;
-      //printf("got new region %d %d\n", reg.start, reg.end);
+    point* next_point = cur_point.read();
+    if (next_point) {
+      x1 = next_point->x;
+      y1 = next_point->y;
     }
-
-    if (cur_sample < reg.start || cur_sample >= reg.end) {
-      // cross fade
-      cur_sample = reg.start;
-      cur_dir = 1;
-    }
-
-    int orig_cur_sample = cur_sample;
 
     for (int chan=0; chan<output_ports.size(); chan++) {
-      jack_default_audio_sample_t* buffer =
+      output_ports[chan].buffer =
         (jack_default_audio_sample_t*)
-        jack_port_get_buffer(output_ports[chan], nframes);
+        jack_port_get_buffer(output_ports[chan].port, nframes);
+    }
 
-      cur_sample = orig_cur_sample;
-
-      for (int i=0; i<nframes; i++) {
-        if (reg.start == -1) {
-          buffer[i] = 0;
-          continue;
+    for (int i=0; i<nframes; i++) {
+      if (counter-- <= 0) {
+        counter = 30;
+        if (x0 != x1 || y0 != y1) {
+          //puts("grabbing");
+          step_toward(x0,y0,x1,y1);
+          gm.lookup(x0, y0, start, end, starti, endi);
+          if (cur_sample < start || cur_sample >= end) {
+            //puts("new thing");
+            // cross fade
+            cur_sample = start;
+            cur_dir = 1;
+          }
         }
-        buffer[i] = audio[chan][cur_sample];
+      }
 
-        cur_sample += cur_dir;
-        if (cur_sample >= reg.end) {
-          cur_sample = reg.end-1;
-          cur_dir = -1;
-        } else if (cur_sample < reg.start) {
-          cur_sample = reg.start;
-          cur_dir = 1;
-        }
+      for (int chan=0; chan<output_ports.size(); chan++) {
+        output_ports[chan].buffer[i] =
+          start == -1 ? 0 : audio[chan][cur_sample];
+      }
+
+      cur_sample += cur_dir;
+      if (cur_sample >= end) {
+        cur_sample = end-1;
+        cur_dir = -1;
+      } else if (cur_sample < start) {
+        cur_sample = start;
+        cur_dir = 1;
       }
     }
   }

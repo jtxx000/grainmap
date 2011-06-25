@@ -178,11 +178,11 @@ struct audio_file {
 };
 
 static const float colors[][3] = {
-  {102,21,16},
-  {217,53,26},
-  {242,199,111},
-  {191,151,39},
-  {32,76,63}
+  {239,41,41},
+  {252,175,62},
+  {114,159,207},
+  {117,80,123},
+  {138,226,52}
 };
 
 struct grain_draw {
@@ -209,9 +209,18 @@ struct grain_draw {
       hilbert_i2c(2, nsize, i++, coords);
       const float* col = colors[color];
       //float v = (*data++)*0.85 + 0.15;
-      float v = (*data++);
+      double p = 1 + log(*data++)*0.2;
+      if (p > 1) p = 1;
+      if (p < 0) p = 0;
+      if (std::isnan(p)) p = 0;
+      assert(p >= 0 && p <= 1);
+      //double p = 1.4;
+      double q = 1-p;
+      img.set(coords[0], coords[1],
+              255*q + col[0]*p,
+              255*q + col[1]*p,
+              255*q + col[2]*p);
       //printf("    v %f\n", v);
-      img.set(coords[0], coords[1], col[0]*v, col[1]*v, col[2]*v);
     }
   }
 };
@@ -366,7 +375,7 @@ static unique_ptr<cairo_image> resample_and_draw(region_map& regions,
             cur_reg.contains(lookup_index(nsize, x+1, y-1)) &&
             cur_reg.contains(lookup_index(nsize, x+1, y  )) &&
             cur_reg.contains(lookup_index(nsize, x+1, y+1))))
-        img->lighten(x,y);
+        img->mark(x,y);
 
     }
   }
@@ -420,18 +429,15 @@ struct cairo_image {
     *(uint32_t*)(data + y*stride + x*4) = r << 16 | g << 8 | b;
   }
 
-  void lighten(int x, int y) {
+  void mark(int x, int y) {
     // TODO abstract
     uint32_t c = *(uint32_t*)(data + y*stride + x*4);
-    int r = c >> 16;
-    int g = (c >> 8) && 0xFF;
-    int b = c && 0xFF;
-    double p = 0.05;
-    double q = 1-p;
-    set(x, y,
-        r*q + 255*p,
-        g*q + 255*p,
-        b*q + 255*p);
+    unsigned char r = (c >> 16) & 0xFF;
+    unsigned char g = (c >> 8) & 0xFF;
+    unsigned char b = c & 0xFF;
+    double p = 0.85;
+    set(x, y, r*p, g*p, b*p);
+    //set(x, y, 255, 255, 255);
   }
 
   Cairo::RefPtr<Cairo::ImageSurface> create_surface() {
@@ -440,7 +446,7 @@ struct cairo_image {
 };
 
 class grainmap {
-  static const int nsize = 11;
+  static const int nsize = 10;
 
   std::map<int,int> region_starts; // (index -> sample) TODO merge with region_map
   std::unique_ptr<audio_data> adata;

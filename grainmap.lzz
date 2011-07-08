@@ -50,7 +50,7 @@ struct region {
   }
 };
 
-typedef map<int,vertex*> region_map;
+typedef map<int,five_color::vertex*> region_map;
 
 static inline region_map::iterator find_vertex(region_map& regions, int index) {
   assert(index >= 0);
@@ -58,7 +58,7 @@ static inline region_map::iterator find_vertex(region_map& regions, int index) {
 }
 
 static inline void traverse_region(region r,
-                                   vertex* vtx,
+                                   five_color::vertex* vtx,
                                    five_color& fc,
                                    region_map& regions,
                                    int nsize)
@@ -298,7 +298,7 @@ static void construct_edges(five_color& fc, region_map& regions, int nsize) {
   for (auto it=regions.begin(); it != regions.end();) {
     region r;
     r.start = it->first;
-    vertex* v = it->second;
+    five_color::vertex* v = it->second;
     ++it;
     r.end = it == regions.end() ? INT_MAX : it->first;
     traverse_region(r, v, fc, regions, nsize);

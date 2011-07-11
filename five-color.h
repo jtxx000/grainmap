@@ -1,3 +1,6 @@
+#ifndef FIVE_COLOR_H
+#define FIVE_COLOR_H
+
 #include <list>
 #include <vector>
 #include <boost/pool/object_pool.hpp>
@@ -65,3 +68,5 @@ private:
   boost::object_pool<vertex> vertex_pool;
   std::vector<vertex*> vertices;
 };
+
+#endif //FIVE_COLOR_H

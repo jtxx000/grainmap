@@ -1,10 +1,7 @@
-#hdr
-#include <cairomm/cairomm.h>
-#include <memory>
-#include <map>
-#end
+#include "grainmap.h"
+#include "hilbert.h"
+#include "five-color.h"
 
-#src
 #include <stdio.h>
 #include <math.h>
 #include <samplerate.h>
@@ -16,9 +13,6 @@
 #include <limits.h>
 #include <string.h>
 #include <aubio.h>
-
-#include "hilbert.h"
-#include "five-color.h"
 
 using namespace std;
 
@@ -85,23 +79,6 @@ static inline void traverse_region(region r,
   int iter = 0;
   region foreign_region = {0,-1};
   do {
-    //printf("traverse (%d,%d) (%d,%d) (%d,%d) (%d,%d) %d\n", coords[0], coords[1], nx, ny, foreign_coords[0], foreign_coords[1], orig_coords[0], orig_coords[1], iter);
-
-    // {
-    //   for (int y=0; y<64; y++) {
-    //     for (int x=0; x<64; x++) {
-    //       bitmask_t cs[2];
-    //       cs[0] = x;
-    //       cs[1] = y;
-    //       putchar((coords[0] == cs[0] && coords[1] == cs[1]) ?
-    //               (ny == -1 ? '^' : ny == 1 ? 'v' : nx == 1 ? '>' : '<') :
-    //               (foreign_coords[0] == cs[0] && foreign_coords[1] == cs[1]) ? '*' :
-    //               r.contains(hilbert_c2i(2, nsize, cs)) ? '#' : ' ');
-    //     }
-    //     putchar('\n');
-    //   }
-    // }
-
     int index;
     if (in_bounds(nsize, foreign_coords) &&
         !(foreign_region.contains(index=hilbert_c2i(2, nsize, foreign_coords))))
@@ -224,29 +201,6 @@ struct grain_draw {
     }
   }
 };
-
-// void draw_region(audio_file& resampled_audio, int nsize, region& r, int color) {
-//   int w = 1 << nsize;
-//   cairo_image image(w, w);
-//   for (int i=r.start; i<r.end; i++) {
-//     bitmask_t coords[2];
-//     hilbert_i2c(2, nsize, i, coords);
-//     const float* col = colors[color];
-//     float v = resampled_audio[i];
-//     image.set(coords[0], coords[1], col[0]*v, col[1]*v, col[2]*v);
-//   }
-// }
-
-// void draw(audio_file& audio, int nsize, region_map& regions) {
-//   for (auto it=regions.begin(); it != regions.end();) {
-//     region r;
-//     r.start = it->first;
-//     int color = it->second->color;
-//     ++it;
-//     r.end = it == regions.end() ? audio.size : it->first;
-//     draw_region(audio, nsize, r, color);
-//   }
-// }
 
 static unique_ptr<audio_data> read_and_detect(map<int,int>& regions,
                                               int out_size)
@@ -386,173 +340,103 @@ static unique_ptr<cairo_image> resample_and_draw(region_map& regions,
   return img;
 }
 
-#end
+audio_data::audio_data(int size, int channels)
+  : data(new float*[channels]),
+    size(size),
+    channels(channels)
+{
+  for (int i=0; i<channels; i++)
+    data[i] = new float[size];
+}
 
-struct audio_data {
-  float** data;
-  int size;
-  int channels;
+audio_data::~audio_data() {
+  for (int i=0; i<channels; i++)
+    delete[] data[i];
+  delete[] data;
+}
 
-  audio_data(int size, int channels)
-    : data(new float*[channels]),
-      size(size),
-      channels(channels)
-  {
-    for (int i=0; i<channels; i++)
-      data[i] = new float[size];
-  }
+cairo_image::cairo_image(int width, int height)
+  : stride(cairo_format_stride_for_width(CAIRO_FORMAT_RGB24, width)),
+    width(width),
+    height(height)
+{
+  int size = height*stride;
+  data = new unsigned char[size];
+}
 
-  ~audio_data() {
-    for (int i=0; i<channels; i++)
-      delete[] data[i];
-    delete[] data;
-  }
-};
+cairo_image::~cairo_image() {
+  delete[] data;}
 
-struct cairo_image {
-  int width, height, stride;
-  unsigned char* data;
+void cairo_image::set(int x, int y, unsigned char r, unsigned char g, unsigned char b) {
+  *(uint32_t*)(data + y*stride + x*4) = r << 16 | g << 8 | b;
+}
 
-  cairo_image(int width, int height)
-    : stride(cairo_format_stride_for_width(CAIRO_FORMAT_RGB24, width)),
-      width(width),
-      height(height)
-  {
-    int size = height*stride;
-    data = new unsigned char[size];
-  }
+void cairo_image::mark(int x, int y) {
+  // TODO abstract
+  uint32_t c = *(uint32_t*)(data + y*stride + x*4);
+  unsigned char r = (c >> 16) & 0xFF;
+  unsigned char g = (c >> 8) & 0xFF;
+  unsigned char b = c & 0xFF;
+  double p = 0.85;
+  set(x, y, r*p, g*p, b*p);
+  //set(x, y, 255, 255, 255);
+}
 
-  ~cairo_image() {
-    delete[] data;}
+Cairo::RefPtr<Cairo::ImageSurface> cairo_image::create_surface() {
+  return Cairo::ImageSurface::create(data, Cairo::FORMAT_RGB24, width, height, stride);
+}
 
-  void set(int x, int y, unsigned char r, unsigned char g, unsigned char b) {
-    *(uint32_t*)(data + y*stride + x*4) = r << 16 | g << 8 | b;
-  }
 
-  void mark(int x, int y) {
-    // TODO abstract
-    uint32_t c = *(uint32_t*)(data + y*stride + x*4);
-    unsigned char r = (c >> 16) & 0xFF;
-    unsigned char g = (c >> 8) & 0xFF;
-    unsigned char b = c & 0xFF;
-    double p = 0.85;
-    set(x, y, r*p, g*p, b*p);
-    //set(x, y, 255, 255, 255);
-  }
+grainmap::grainmap() {
+  int out_size = 1 << nsize;
+  out_size = out_size*out_size;
+  region_map regions;
+  five_color fc;
+  printf("## reading\n");
+  adata = read_and_detect(region_starts, out_size);
+  for (auto it=region_starts.begin(); it!=region_starts.end(); ++it)
+    regions.insert(region_map::value_type(it->first, fc.create_vertex()));
+  printf("## constructing edges\n");
+  construct_edges(fc, regions, nsize);
+  printf("## coloring\n");
+  fc.color();
+  printf("## drawing\n");
+  cimg = resample_and_draw(regions, *adata, nsize, out_size);
+  img = cimg->create_surface();
+  // printf("## writing\n");
+  // cairo_surface_t* surface = img->create_surface();
+  // cairo_surface_write_to_png(surface, "bin/out.png");
+  // cairo_surface_destroy(surface);
+}
 
-  Cairo::RefPtr<Cairo::ImageSurface> create_surface() {
-    return Cairo::ImageSurface::create(data, Cairo::FORMAT_RGB24, width, height, stride);
-  }
-};
+float** grainmap::get_audio() {
+  return adata->data;
+}
 
-class grainmap {
-  static const int nsize = 10;
+int grainmap::channel_count() {
+  return adata->channels;
+}
 
-  std::map<int,int> region_starts; // (index -> sample) TODO merge with region_map
-  std::unique_ptr<audio_data> adata;
-  std::unique_ptr<cairo_image> cimg;
-  Cairo::RefPtr<Cairo::ImageSurface> img;
+// start and end are samples; starti, endi are hilbert indexes
+void grainmap::lookup(int x, int y, int& start, int& stop, int& starti, int& endi) {
+  // TODO merge with find_vertex
+  bitmask_t coords[2];
+  coords[0] = x;
+  coords[1] = y;
+  int index = hilbert_c2i(2, nsize, coords);
+  assert(index >= 0);
+  if (index >= starti && index < endi)
+    return;
+  auto it = --region_starts.upper_bound(index);
+  starti = it->first;
+  start = it->second;
+  ++it;
+  // TODO this sort of thing appears in several places
+  endi = it == region_starts.end() ? INT_MAX : it->first;
+  stop = it == region_starts.end() ? adata->size : it->second;
+}
 
-public:
-  grainmap() {
-    int out_size = 1 << nsize;
-    out_size = out_size*out_size;
-    region_map regions;
-    five_color fc;
-    printf("## reading\n");
-    adata = read_and_detect(region_starts, out_size);
-    for (auto it=region_starts.begin(); it!=region_starts.end(); ++it)
-      regions.insert(region_map::value_type(it->first, fc.create_vertex()));
-    printf("## constructing edges\n");
-    construct_edges(fc, regions, nsize);
-    printf("## coloring\n");
-    fc.color();
-    printf("## drawing\n");
-    cimg = resample_and_draw(regions, *adata, nsize, out_size);
-    img = cimg->create_surface();
-    // printf("## writing\n");
-    // cairo_surface_t* surface = img->create_surface();
-    // cairo_surface_write_to_png(surface, "bin/out.png");
-    // cairo_surface_destroy(surface);
-  }
+Cairo::RefPtr<Cairo::ImageSurface> grainmap::get_surface() {
+  return img;
+}
 
-  float** get_audio() {
-    return adata->data;
-  }
-
-  int channel_count() {
-    return adata->channels;
-  }
-
-  // start and end are samples; starti, endi are hilbert indexes
-  void lookup(int x, int y, int& start, int& stop, int& starti, int& endi) {
-    // TODO merge with find_vertex
-    bitmask_t coords[2];
-    coords[0] = x;
-    coords[1] = y;
-    int index = hilbert_c2i(2, nsize, coords);
-    assert(index >= 0);
-    if (index >= starti && index < endi)
-      return;
-    auto it = --region_starts.upper_bound(index);
-    starti = it->first;
-    start = it->second;
-    ++it;
-    // TODO this sort of thing appears in several places
-    endi = it == region_starts.end() ? INT_MAX : it->first;
-    stop = it == region_starts.end() ? adata->size : it->second;
-  }
-
-  Cairo::RefPtr<Cairo::ImageSurface> get_surface() {
-    return img;
-  }
-};
-
-// int main() {
-//   grain();
-// }
-
-// void create_grain_map(char* path, env_fol* env, int nsize) {
-//   SF_INFO info = {0};
-//   SNDFILE* file;
-//   file = sf_open(path, SFM_READ, &info);
-//   assert(file);
-//   assert(info.channels == 1);
-
-//   int out_size = 1 << nsize;
-
-//   int err;
-//   //SRC_STATE* src = src_new(SRC_SINC_BEST_QUALITY, 1, &err);
-//   SRC_STATE* src = src_new(SRC_SINC_FASTEST, 1, &err);
-//   assert(src);
-
-//   double ratio = out_size/(double)info.frames;
-
-//   float buf[BUF_SIZE];
-//   int size = out_size;
-//   float* out = new float[out_size];
-//   SRC_DATA data;
-//   data.data_in = buf;
-//   data.data_out = out;
-//   data.src_ratio = ratio;
-//   data.end_of_input = 0;
-//   int num = BUF_SIZE;
-//   while (num == BUF_SIZE) {
-//     num = data.input_frames = sf_readf_float(file, buf, BUF_SIZE);
-//     data.output_frames = size;
-
-//     env->process(buf, num);
-//     src_process(src, &data);
-//     assert(data.input_frames_used == num || size < BUF_SIZE);
-
-//     size-=data.output_frames_gen;
-//     data.data_out += data.output_frames_gen;
-//   }
-
-//   // AudioEnv* audio = malloc(sizeof(AudioEnv));
-//   // audio->data = out;
-//   // audio->size = out_size - size;
-
-//   sf_close(file);
-//   src_delete(src);
-// }

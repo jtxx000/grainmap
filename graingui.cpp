@@ -1,4 +1,3 @@
-#src
 #include <gtkmm.h>
 #include <cairomm/cairomm.h>
 #include <grainmap.h>
@@ -14,7 +13,7 @@ class grain_widget : public DrawingArea {
 private:
   grainmap gm;
   grainaudio audio;
-  
+
 public:
   grain_widget() : audio(gm) {
     add_events(Gdk::BUTTON_PRESS_MASK           |
@@ -88,4 +87,3 @@ int main(int argc, char* argv[]) {
   Gtk::Main::run(window);
   return 0;
 }
-#end

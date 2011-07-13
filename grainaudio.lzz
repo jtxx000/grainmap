@@ -84,6 +84,8 @@ struct grainaudio {
   int cur_dir;
   int counter;
 
+  jack_client_t* client;
+
   grainaudio(grainmap& gm)
     : gm(gm),
       audio(gm.get_audio()),
@@ -93,7 +95,6 @@ struct grainaudio {
       cur_dir(1),
       counter(0)
   {
-    jack_client_t* client;
     CHK(client=jack_client_open("grainaudio", JackNullOption, 0));
     jack_set_process_callback(client, ::process, this);
     jack_on_shutdown(client, jack_shutdown, 0);
@@ -109,6 +110,17 @@ struct grainaudio {
     }
 
     CHK(!jack_activate(client));
+
+    const char **ports;
+
+    CHK(ports = jack_get_ports(client, NULL, NULL, JackPortIsPhysical|JackPortIsInput));
+    for (auto it = output_ports.begin(); ports && it != output_ports.end(); ++it) {
+      CHK(!jack_connect(client, jack_port_name(it->port), *ports++));
+    }
+  }
+
+  ~grainaudio() {
+    jack_deactivate(client);
   }
 
   void set_point(float x, float y) {
@@ -132,7 +144,7 @@ struct grainaudio {
 
     for (int i=0; i<nframes; i++) {
       if (counter-- <= 0) {
-        counter = 30;
+        counter = 10;
         if (x0 != x1 || y0 != y1) {
           //puts("grabbing");
           step_toward(x0,y0,x1,y1);

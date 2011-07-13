@@ -5,7 +5,7 @@ LDFLAGS = -lboost_unit_test_framework
 
 include common.mk
 
-all: five-color-tests graingui
+all: graingui
 
 out.png: create-grainmap.py _grainmap.so
 	$(PY) $<

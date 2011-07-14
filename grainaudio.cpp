@@ -62,7 +62,6 @@ grainaudio::grainaudio(grainmap& gm)
     cur_dir(1),
     counter(0)
 {
-  jack_client_t* client;
   CHK(client=jack_client_open("grainaudio", JackNullOption, 0));
   jack_set_process_callback(client, ::process, this);
   jack_on_shutdown(client, jack_shutdown, 0);

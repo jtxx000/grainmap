@@ -155,11 +155,17 @@ struct audio_file {
 };
 
 static const float colors[][3] = {
-  {125,130,88},
-  {207,185,124},
-  {229,137,79},
-  {199,92,68},
-  {166,62,56}
+  {140,30,29},
+  {212,66,31},
+  {75,138,121},
+  {208,217,105},
+  {242,140,62}
+
+  // {125,130,88},
+  // {207,185,124},
+  // {229,137,79},
+  // {199,92,68},
+  // {166,62,56}
 };
 
 struct grain_draw {
@@ -231,7 +237,7 @@ static unique_ptr<audio_data> read_and_detect(const std::string& path,
     if (**onset_vec->data || !cur_sample) {
       // TODO backtrack to zero crossing
       // TODO record actual cur_sample
-      int samp = (cur_sample - BUF_SIZE*4);
+      int samp = max(cur_sample - BUF_SIZE*4, 0);
       int pos = max((int)(samp*ratio), 0);
       //printf("onset %d %d\n", pos, cur_sample);
       ins = regions.insert(ins, map<int,int>::value_type(pos, samp));
@@ -429,6 +435,7 @@ void grainmap::lookup(int x, int y, int& start, int& stop, int& starti, int& end
   auto it = --region_starts.upper_bound(index);
   starti = it->first;
   start = it->second;
+  assert(start >= 0);
   ++it;
   // TODO this sort of thing appears in several places
   endi = it == region_starts.end() ? INT_MAX : it->first;

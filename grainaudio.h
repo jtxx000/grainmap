@@ -38,8 +38,11 @@ class grainaudio {
   int cur_dir;
   int counter;
 
+  jack_client_t* client;
+
 public:
   grainaudio(grainmap& gm);
+  ~grainaudio();
   void set_point(float x, float y);
   void process(jack_nframes_t nframes);
 };

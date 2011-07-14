@@ -35,7 +35,7 @@ class grainmap {
   Cairo::RefPtr<Cairo::ImageSurface> img;
 
 public:
-  grainmap();
+  grainmap(const std::string& path);
   float** get_audio();
   int channel_count();
   void lookup(int x, int y, int& start, int& stop, int& starti, int& endi);

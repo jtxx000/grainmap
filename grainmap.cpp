@@ -201,12 +201,12 @@ struct grain_draw {
   }
 };
 
-static unique_ptr<audio_data> read_and_detect(map<int,int>& regions,
+static unique_ptr<audio_data> read_and_detect(const std::string& path,
+                                              map<int,int>& regions,
                                               int out_size)
 {
-  const char* path = "data/freqs.wav";
   SF_INFO info = {0};
-  SNDFILE* file = sf_open(path, SFM_READ, &info);
+  SNDFILE* file = sf_open(path.c_str(), SFM_READ, &info);
   assert(file);
   double ratio = out_size/(double)info.frames;
   unique_ptr<audio_data> adata(new audio_data(info.frames, info.channels));
@@ -386,14 +386,13 @@ Cairo::RefPtr<Cairo::ImageSurface> cairo_image::create_surface() {
   return Cairo::ImageSurface::create(data, Cairo::FORMAT_RGB24, width, height, stride);
 }
 
-
-grainmap::grainmap() {
+grainmap::grainmap(const std::string& path) {
   int out_size = 1 << nsize;
   out_size = out_size*out_size;
   region_map regions;
   five_color fc;
   printf("## reading\n");
-  adata = read_and_detect(region_starts, out_size);
+  adata = read_and_detect(path, region_starts, out_size);
   for (auto it=region_starts.begin(); it!=region_starts.end(); ++it)
     regions.insert(region_map::value_type(it->first, fc.create_vertex()));
   printf("## constructing edges\n");
@@ -405,8 +404,8 @@ grainmap::grainmap() {
   img = cimg->create_surface();
   // printf("## writing\n");
   // cairo_surface_t* surface = img->create_surface();
-  // cairo_surface_write_to_png(surface, "bin/out.png");
-  // cairo_surface_destroy(surface);
+  // img->write_to_png("bin/out.png");
+  // cairo_surface_destroy(surface)
 }
 
 float** grainmap::get_audio() {

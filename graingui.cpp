@@ -15,7 +15,7 @@ private:
   grainaudio audio;
 
 public:
-  grain_widget() : audio(gm) {
+  grain_widget(const string& path) : gm(path), audio(gm) {
     add_events(Gdk::BUTTON_PRESS_MASK           |
                Gdk::POINTER_MOTION_MASK         |
                Gdk::POINTER_MOTION_HINT_MASK);
@@ -40,7 +40,7 @@ public:
     const int width = allocation.get_width();
     const int height = allocation.get_height();
     RefPtr<ImageSurface> img = gm.get_surface();
-    return min(width/(double)img->get_width(), height/(double)img->get_height());
+    return min(min(width/(double)img->get_width(), height/(double)img->get_height()), 1.0);
   }
 
   bool on_motion_notify_event(GdkEventMotion* event) {
@@ -81,7 +81,16 @@ public:
 int main(int argc, char* argv[]) {
   Gtk::Main kit(argc, argv);
   Gtk::Window window;
-  grain_widget grain;
+  FileChooserDialog dialog("Choose an audio sample to load", FILE_CHOOSER_ACTION_OPEN);
+  dialog.add_button(Gtk::Stock::CANCEL, Gtk::RESPONSE_CANCEL);
+  dialog.add_button("Select", RESPONSE_OK);
+  if (dialog.run() != RESPONSE_OK)
+    return 1;
+  dialog.hide();
+  MessageDialog msg("loading... please wait", false, MESSAGE_INFO, BUTTONS_NONE);
+  msg.run();
+  grain_widget grain(dialog.get_filename());
+  msg.hide();
   window.add(grain);
   grain.show();
   Gtk::Main::run(window);

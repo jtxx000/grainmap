@@ -78,6 +78,17 @@ grainaudio::grainaudio(grainmap& gm)
   }
 
   CHK(!jack_activate(client));
+
+  const char **ports;
+
+  CHK(ports = jack_get_ports(client, NULL, NULL, JackPortIsPhysical|JackPortIsInput));
+  for (auto it = output_ports.begin(); ports && it != output_ports.end(); ++it) {
+    CHK(!jack_connect(client, jack_port_name(it->port), *ports++));
+  }
+}
+
+grainaudio::~grainaudio() {
+  jack_deactivate(client);
 }
 
 void grainaudio::set_point(float x, float y) {

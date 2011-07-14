@@ -155,11 +155,11 @@ struct audio_file {
 };
 
 static const float colors[][3] = {
-  {198, 82, 82},
-  {215, 168, 99},
-  {130, 160, 191},
-  {116, 81, 122},
-  {139, 173, 105}
+  {125,130,88},
+  {207,185,124},
+  {229,137,79},
+  {199,92,68},
+  {166,62,56}
 };
 
 struct grain_draw {
@@ -192,11 +192,10 @@ struct grain_draw {
       if (std::isnan(p)) p = 0;
       assert(p >= 0 && p <= 1);
       //double p = 1.4;
-      double q = 1-p;
       img.set(coords[0], coords[1],
-              255*q + col[0]*p,
-              255*q + col[1]*p,
-              255*q + col[2]*p);
+              col[0]*p,
+              col[1]*p,
+              col[2]*p);
       //printf("    v %f\n", v);
     }
   }
@@ -377,8 +376,9 @@ void cairo_image::mark(int x, int y) {
   unsigned char r = (c >> 16) & 0xFF;
   unsigned char g = (c >> 8) & 0xFF;
   unsigned char b = c & 0xFF;
-  double p = 0.85;
-  set(x, y, r*p, g*p, b*p);
+  double p = 0.10;
+  double q = 1-p;
+  set(x, y, r*q + 255*p, g*q + 255*p, b*q + 255*p);
   //set(x, y, 255, 255, 255);
 }
 

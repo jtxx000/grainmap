@@ -397,15 +397,15 @@ grainmap::grainmap(const std::string& path) {
   out_size = out_size*out_size;
   region_map regions;
   five_color fc;
-  printf("## reading\n");
+  // printf("## reading\n");
   adata = read_and_detect(path, region_starts, out_size);
   for (auto it=region_starts.begin(); it!=region_starts.end(); ++it)
     regions.insert(region_map::value_type(it->first, fc.create_vertex()));
-  printf("## constructing edges\n");
+  // printf("## constructing edges\n");
   construct_edges(fc, regions, nsize);
-  printf("## coloring\n");
+  // printf("## coloring\n");
   fc.color();
-  printf("## drawing\n");
+  // printf("## drawing\n");
   cimg = resample_and_draw(regions, *adata, nsize, out_size);
   img = cimg->create_surface();
   // printf("## writing\n");

@@ -80,9 +80,9 @@ void five_color::vertex::add_edge(five_color::vertex* other,
 }
 
 void five_color::vertex::remove() {
-  printf("remove %p %d\n", this, degree);
+  // printf("remove %p %d\n", this, degree);
   foreach_edge(edg, this) {
-    printf("remove from edge %p %d\n", edg->vtx, edg->vtx->degree);
+    // printf("remove from edge %p %d\n", edg->vtx, edg->vtx->degree);
     if (edg->pos == edg->vtx->root_edge)
       edg->vtx->root_edge = edg->pos->next;
     edg->pos->remove();
@@ -101,7 +101,7 @@ bool five_color::vertex::adjacent_to(vertex* other) {
 
 void five_color::vertex::assign_color() {
   foreach_edge(edg, this) {
-    printf("neighbor-col: %p %d\n", edg->vtx, edg->vtx->color);
+    // printf("neighbor-col: %p %d\n", edg->vtx, edg->vtx->color);
     color |= 1<<edg->vtx->color;
   }
 
@@ -110,12 +110,12 @@ void five_color::vertex::assign_color() {
   for (int i=0; i<5; i++) {
     if (color & 1<<i) {
       color = i;
-      printf("color found: %d\n", color);
+      // printf("color found: %d\n", color);
       return;
     }
   }
 
-  printf("default color\n");
+  // printf("default color\n");
 
   color = 0;
 }
@@ -233,7 +233,7 @@ void five_color::color() {
   five_color::vertex::vertex_stack s4, s5;
   stack<pair<vertex*, vertex*> > sd;
 
-  printf("size: %d\n", vertices.size());
+  // printf("size: %d\n", vertices.size());
 
   for (vector<vertex*>::iterator v=vertices.begin(); v != vertices.end(); ++v)
     (**v).push_to(&s4,&s5);
@@ -241,13 +241,13 @@ void five_color::color() {
   for (;;) {
     while (!s4.empty()) {
       vertex* v = s4.front();
-      printf("\n== pop s4 %p %d ==\n", v, v->degree);
+      // printf("\n== pop s4 %p %d ==\n", v, v->degree);
       s4.pop_front();
       v->remove();
       sd.push(pair<vertex*,vertex*>(v,0));
       // degree has decreased by one
       foreach_edge(edg, v) {
-        printf("s4 edge %p\n", edg->vtx);
+        // printf("s4 edge %p\n", edg->vtx);
         edg->vtx->push_to(&s4, &s5);
       }
     }
@@ -255,7 +255,7 @@ void five_color::color() {
     if (s5.empty())
       break;
 
-    printf("pop s5\n");
+    // printf("pop s5\n");
 
     vertex* v = s5.front();
     s5.pop_front();
@@ -279,7 +279,7 @@ void five_color::color() {
 
   while (!sd.empty()) {
     pair<vertex*,vertex*> v(sd.top());
-    printf("color %p\n", v.first);
+    // printf("color %p\n", v.first);
     sd.pop();
     if (v.second)
       v.first->color = v.second->color;

@@ -28,7 +28,7 @@ public:
   }
 
   bool on_button_press_event(GdkEventButton* event) {
-    printf("down %d %d\n", event->x, event->y);
+    // printf("down %d %d\n", event->x, event->y);
     set_point(event->x, event->y);
     return true;
   }
@@ -46,7 +46,7 @@ public:
   bool on_motion_notify_event(GdkEventMotion* event) {
     if (!(event->state & GDK_BUTTON1_MASK)) return true;
 
-    printf("%d %d\n", event->x, event->y);
+    // printf("%d %d\n", event->x, event->y);
     set_point(event->x, event->y);
     return true;
   }

@@ -87,10 +87,10 @@ int main(int argc, char* argv[]) {
   if (dialog.run() != RESPONSE_OK)
     return 1;
   dialog.hide();
-  MessageDialog msg("loading... please wait", false, MESSAGE_INFO, BUTTONS_NONE);
-  msg.run();
+  // MessageDialog msg("loading... please wait", false, MESSAGE_INFO, BUTTONS_NONE);
+  // msg.run();
   grain_widget grain(dialog.get_filename());
-  msg.hide();
+  // msg.hide();
   window.add(grain);
   grain.show();
   Gtk::Main::run(window);

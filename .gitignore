@@ -12,6 +12,6 @@ depcomp
 install-sh
 missing
 
-graingui
+grainmap
 
 data/

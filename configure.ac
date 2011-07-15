@@ -13,6 +13,6 @@ AC_CHECK_FUNCS([memset])
 
 AM_INIT_AUTOMAKE
 AC_CONFIG_FILES([Makefile])
-PKG_CHECK_MODULES([DEPS], [sndfile samplerate cairo python-2.7 pycairo aubio jack gtkmm-2.4 cairomm-1.0])
+PKG_CHECK_MODULES([DEPS], [sndfile samplerate cairo python-2.7 pycairo aubio jack gtkmm-3.0 cairomm-1.0])
 
 AC_OUTPUT

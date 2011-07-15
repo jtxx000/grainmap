@@ -111,7 +111,7 @@ void grainaudio::process(jack_nframes_t nframes) {
 
   for (int i=0; i<nframes; i++) {
     if (counter-- <= 0) {
-      counter = 30;
+      counter = 10;
       if (x0 != x1 || y0 != y1) {
         //puts("grabbing");
         step_toward(x0,y0,x1,y1);

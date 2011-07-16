@@ -3,3 +3,32 @@
 ==========
 
 shred an audio file; play with the pieces
+
+Introduction
+============
+
+Grainmap splits an audio file at onsets and displays each slice as a
+region on a map.  Regions which are nearby on the map correspond to
+audio slices that are nearby in time.  Brightly colored regions
+correspond to loud audio slices.  Darker regions that have a few
+bright patches correspond to low-volume audio slices that have a few
+loud peaks.  Colors are chosen so that each region is visually
+distinguishable to its neighbors.
+
+Once the audio file is loaded, clicking on any particular region
+causes the corresponding audio slice to play.  Slices are played
+continuously forward and backward.  Dragging your mouse across the map
+creates a granular style effect.
+
+Usage
+=====
+
+grainmap audio-file.wav
+
+  Load audio-file.wav in grainmap
+
+grainmap
+
+  Browse for an audio file and load it
+
+Make sure the jack server is running.
